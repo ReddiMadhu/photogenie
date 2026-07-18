@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://photogenic.local/schemas/audit/audit_event/v1",
+  "title": "AuditEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "occurred_at",
+    "actor",
+    "tenant_id",
+    "outcome",
+    "integrity"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "auth.login",
+        "auth.logout",
+        "auth.step_up",
+        "search.request",
+        "search.response",
+        "search.result_open",
+        "search.export",
+        "policy.updated",
+        "policy.jurisdiction_updated",
+        "policy.decision_deny",
+        "consent.granted",
+        "consent.withdrawn",
+        "deletion.requested",
+        "deletion.soft_suppressed",
+        "deletion.purged",
+        "legal_hold.applied",
+        "legal_hold.released",
+        "model.mbom_approved",
+        "model.loaded",
+        "index.generation_changed",
+        "break_glass.activated",
+        "break_glass.expired",
+        "admin.config_changed",
+        "security.alert"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type", "actor_id"],
+      "properties": {
+        "actor_type": {
+          "type": "string",
+          "enum": ["user", "service", "system"]
+        },
+        "actor_id": { "type": "string" },
+        "roles": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "impersonated_by": { "type": "string" }
+      }
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "purpose_code": {
+      "type": "string"
+    },
+    "resource": {
+      "type": "object",
+      "properties": {
+        "resource_type": {
+          "type": "string",
+          "enum": [
+            "asset",
+            "face",
+            "repository",
+            "person",
+            "policy",
+            "model",
+            "search_query",
+            "tenant"
+          ]
+        },
+        "resource_id": { "type": "string" }
+      }
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["success", "denied", "failure", "partial"]
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "effective_policy_hash": {
+      "type": "string",
+      "pattern": "^(sha256:)?[a-f0-9]{64}$"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "client": {
+      "type": "object",
+      "properties": {
+        "ip_hash": { "type": "string" },
+        "user_agent_hash": { "type": "string" }
+      }
+    },
+    "details": {
+      "type": "object",
+      "description": "Non-sensitive structured details. Must not contain raw images or full embeddings.",
+      "properties": {
+        "query_image_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "model_id": { "type": "string" },
+        "index_generation": { "type": "string" },
+        "result_count": { "type": "integer", "minimum": 0 },
+        "result_asset_ids_sample": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "type": "string" }
+        },
+        "score_band": {
+          "type": "string",
+          "enum": ["high", "medium", "low", "reject"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prev_hash", "event_hash"],
+      "properties": {
+        "prev_hash": {
+          "type": "string",
+          "pattern": "^(sha256:)?[a-f0-9]{64}$|^genesis$"
+        },
+        "event_hash": {
+          "type": "string",
+          "pattern": "^(sha256:)?[a-f0-9]{64}$"
+        }
+      }
+    }
+  }
+}

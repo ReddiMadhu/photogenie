@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0.0",
+  "bundle_id": "phase0-prod-gates-2026-07-17",
+  "target_environment": "production",
+  "gates": [
+    {
+      "gate_id": "dpia_signed",
+      "title": "DPIA / biometric impact assessment signed",
+      "mandatory": true,
+      "status": "pending",
+      "owner_role": "privacy"
+    },
+    {
+      "gate_id": "lawful_processing_approved",
+      "title": "Lawful processing, purposes, retention, prohibited use approved",
+      "mandatory": true,
+      "status": "pending",
+      "owner_role": "legal"
+    },
+    {
+      "gate_id": "model_commercial_license",
+      "title": "Commercial model rights + MBOM approved",
+      "mandatory": true,
+      "status": "pending",
+      "owner_role": "model_risk"
+    },
+    {
+      "gate_id": "security_review",
+      "title": "Security control model and threat model reviewed",
+      "mandatory": true,
+      "status": "pending",
+      "owner_role": "security"
+    },
+    {
+      "gate_id": "policy_schemas_published",
+      "title": "Machine-readable policy/audit schemas published",
+      "mandatory": true,
+      "status": "approved",
+      "owner_role": "engineering",
+      "approved_by": "platform-engineering",
+      "approved_at": "2026-07-17T12:00:00Z",
+      "notes": "Schemas and examples checked into repository."
+    },
+    {
+      "gate_id": "deletion_drill",
+      "title": "Deletion and restore-with-journal tabletop or drill passed",
+      "mandatory": true,
+      "status": "pending",
+      "owner_role": "security"
+    },
+    {
+      "gate_id": "model_risk_report",
+      "title": "Model risk / accuracy limitations report accepted",
+      "mandatory": true,
+      "status": "pending",
+      "owner_role": "model_risk"
+    },
+    {
+      "gate_id": "product_boundary_signoff",
+      "title": "Product boundary and prohibited-use UX accepted",
+      "mandatory": true,
+      "status": "pending",
+      "owner_role": "product"
+    }
+  ],
+  "overall_status": "blocked",
+  "updated_at": "2026-07-17T12:00:00Z",
+  "updated_by": "governance-bootstrap"
+}

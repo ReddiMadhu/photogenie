@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://photogenic.local/schemas/policy/tenant_policy/v1",
+  "title": "TenantPolicy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "display_name",
+    "jurisdiction_tags",
+    "allowed_purpose_codes",
+    "consent_mode",
+    "retention_rules",
+    "kill_switches",
+    "encryption",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "jurisdiction_tags": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{1,64}$"
+      }
+    },
+    "allowed_purpose_codes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]{2,64}$"
+      }
+    },
+    "consent_mode": {
+      "type": "string",
+      "enum": [
+        "explicit_individual",
+        "population_authorization",
+        "mixed",
+        "disabled_pending_legal"
+      ]
+    },
+    "retention_rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["rule_id", "artifact_type", "retain_days"],
+        "properties": {
+          "rule_id": { "type": "string" },
+          "artifact_type": {
+            "type": "string",
+            "enum": [
+              "source_image_copy",
+              "face_crop",
+              "face_embedding",
+              "query_image",
+              "audit_event",
+              "evaluation_set"
+            ]
+          },
+          "retain_days": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "kill_switches": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ingestion_enabled",
+        "embedding_enabled",
+        "search_enabled",
+        "export_enabled",
+        "identity_naming_enabled"
+      ],
+      "properties": {
+        "ingestion_enabled": { "type": "boolean" },
+        "embedding_enabled": { "type": "boolean" },
+        "search_enabled": { "type": "boolean" },
+        "export_enabled": { "type": "boolean" },
+        "identity_naming_enabled": { "type": "boolean" },
+        "query_image_persist_enabled": { "type": "boolean" }
+      }
+    },
+    "encryption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cmk_id", "key_rotation_days"],
+      "properties": {
+        "cmk_id": { "type": "string", "minLength": 1 },
+        "key_rotation_days": {
+          "type": "integer",
+          "minimum": 30,
+          "maximum": 365
+        }
+      }
+    },
+    "query_image_retain_hours": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 168,
+      "default": 24
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_by": {
+      "type": "string"
+    },
+    "policy_notes": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0.0",
+  "model_id": "arcface-r100-512-pending",
+  "capability": "embedding",
+  "algorithm": "ArcFace",
+  "version": "pending-commercial",
+  "filename": "arcface_r100.onnx",
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "format": "onnx",
+  "license_name": "InsightFace pretrained model terms (research) — NOT APPROVED FOR PRODUCTION",
+  "commercial_use_allowed": false,
+  "training_data_summary": "Pending vendor disclosure / commercial pack",
+  "training_data_restrictions": "Do not deploy to production until commercial_use_allowed is true with evidence.",
+  "owner_team": "cv-platform",
+  "approved_by": ["model-risk-pending"],
+  "approved_at": "2026-07-17T00:00:00Z",
+  "deployment_restrictions": [
+    "development_or_test_only",
+    "synthetic_or_approved_lab_data_only"
+  ],
+  "signature": {
+    "method": "none",
+    "value": ""
+  },
+  "notes": "Placeholder MBOM. Production boot must fail while commercial_use_allowed is false."
+}

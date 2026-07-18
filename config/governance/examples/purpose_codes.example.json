@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0.0",
+  "purposes": [
+    {
+      "code": "enterprise_photo_discovery",
+      "description": "Find enterprise photos of an authorized subject within ACL-scoped repositories.",
+      "risk_tier": "medium",
+      "requires_break_glass": false,
+      "allowed_environments": ["development", "test", "staging", "production"]
+    },
+    {
+      "code": "records_retrieval",
+      "description": "Locate historical enterprise photo records for an authorized business need.",
+      "risk_tier": "medium",
+      "requires_break_glass": false,
+      "allowed_environments": ["development", "test", "staging", "production"]
+    },
+    {
+      "code": "security_investigation",
+      "description": "Security or legal investigation under documented procedure.",
+      "risk_tier": "critical",
+      "requires_break_glass": true,
+      "allowed_environments": ["staging", "production"]
+    },
+    {
+      "code": "hr_ops_authorized",
+      "description": "HR operations with documented authorization and notice.",
+      "risk_tier": "high",
+      "requires_break_glass": false,
+      "allowed_environments": ["staging", "production"]
+    },
+    {
+      "code": "model_evaluation",
+      "description": "Offline accuracy evaluation on approved holdout sets.",
+      "risk_tier": "low",
+      "requires_break_glass": false,
+      "allowed_environments": ["development", "test", "staging"]
+    },
+    {
+      "code": "product_demo",
+      "description": "Demo on synthetic or explicitly approved non-production data.",
+      "risk_tier": "low",
+      "requires_break_glass": false,
+      "allowed_environments": ["development", "test"]
+    }
+  ]
+}

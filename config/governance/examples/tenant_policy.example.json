@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0.0",
+  "tenant_id": "11111111-1111-1111-1111-111111111111",
+  "display_name": "Example Corp (non-production)",
+  "jurisdiction_tags": ["us-default"],
+  "allowed_purpose_codes": [
+    "enterprise_photo_discovery",
+    "records_retrieval",
+    "model_evaluation",
+    "product_demo"
+  ],
+  "consent_mode": "disabled_pending_legal",
+  "retention_rules": [
+    {
+      "rule_id": "face_crop_default",
+      "artifact_type": "face_crop",
+      "retain_days": 30
+    },
+    {
+      "rule_id": "face_embedding_default",
+      "artifact_type": "face_embedding",
+      "retain_days": 1095
+    },
+    {
+      "rule_id": "query_image_default",
+      "artifact_type": "query_image",
+      "retain_days": 1
+    },
+    {
+      "rule_id": "audit_default",
+      "artifact_type": "audit_event",
+      "retain_days": 2555
+    }
+  ],
+  "kill_switches": {
+    "ingestion_enabled": false,
+    "embedding_enabled": false,
+    "search_enabled": false,
+    "export_enabled": false,
+    "identity_naming_enabled": false,
+    "query_image_persist_enabled": false
+  },
+  "encryption": {
+    "cmk_id": "vault:example-tenant-cmk",
+    "key_rotation_days": 90
+  },
+  "query_image_retain_hours": 24,
+  "updated_at": "2026-07-17T00:00:00Z",
+  "updated_by": "governance-bootstrap",
+  "policy_notes": "Example tenant is fail-closed until Legal/Privacy approve and release gates are signed."
+}

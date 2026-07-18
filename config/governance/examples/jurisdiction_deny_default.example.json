@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0.0",
+  "jurisdiction_id": "airgap-deny-default",
+  "display_name": "Unassigned / fail-closed",
+  "biometric_notice_required": true,
+  "written_release_required": true,
+  "max_retention_days": 0,
+  "ingestion_enabled": false,
+  "embedding_enabled": false,
+  "search_enabled": false,
+  "export_enabled": false,
+  "identity_naming_enabled": false,
+  "query_image_persist_enabled": false,
+  "minors_processing_allowed": false,
+  "allowed_purpose_codes": [],
+  "notes": "Applied when tenant has no mapped jurisdiction."
+}

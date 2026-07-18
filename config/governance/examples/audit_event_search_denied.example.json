@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0.0",
+  "event_id": "22222222-2222-2222-2222-222222222222",
+  "event_type": "search.request",
+  "occurred_at": "2026-07-17T12:00:00Z",
+  "actor": {
+    "actor_type": "user",
+    "actor_id": "user:alice@example.com",
+    "roles": ["analyst"]
+  },
+  "tenant_id": "11111111-1111-1111-1111-111111111111",
+  "purpose_code": "enterprise_photo_discovery",
+  "resource": {
+    "resource_type": "search_query",
+    "resource_id": "req-demo-001"
+  },
+  "outcome": "denied",
+  "reason_codes": ["search_disabled", "release_gates_incomplete"],
+  "effective_policy_hash": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "request_id": "req-demo-001",
+  "client": {
+    "ip_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "user_agent_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "details": {
+    "query_image_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "result_count": 0
+  },
+  "integrity": {
+    "prev_hash": "genesis",
+    "event_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  }
+}

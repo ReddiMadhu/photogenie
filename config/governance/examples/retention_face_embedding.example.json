@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0.0",
+  "rule_id": "face_embedding_bipa_aligned",
+  "artifact_type": "face_embedding",
+  "retain_days": 1095,
+  "max_days_from_last_interaction": 1095,
+  "destruction_method": "soft_tombstone_then_purge",
+  "legal_hold_suspends_destruction": true,
+  "notes": "Destroy when purpose satisfied or max retention reached, unless legal hold applies."
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0.0",
+  "jurisdiction_id": "us-il",
+  "display_name": "Illinois BIPA",
+  "biometric_notice_required": true,
+  "written_release_required": true,
+  "explicit_consent_preferred": true,
+  "max_retention_days": 1095,
+  "ingestion_enabled": true,
+  "embedding_enabled": true,
+  "search_enabled": true,
+  "export_enabled": true,
+  "identity_naming_enabled": true,
+  "query_image_persist_enabled": true,
+  "minors_processing_allowed": false,
+  "allowed_purpose_codes": [
+    "enterprise_photo_discovery",
+    "records_retrieval"
+  ],
+  "notes": "Written notice and release before collection; public retention schedule required."
+}
