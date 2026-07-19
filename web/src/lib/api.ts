@@ -2,7 +2,7 @@
  * API Client — typed fetch wrapper for the PhotoGenic API.
  */
 
-const API_BASE = '/v1';
+const API_BASE = `${window.location.protocol}//${window.location.hostname}:8000/v1`;
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
