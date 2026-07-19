@@ -249,3 +249,15 @@ CREATE TABLE calibration_thresholds (
     calibrated_at   timestamptz NOT NULL DEFAULT now(),
     UNIQUE (tenant_id, group_id)
 );
+
+-- ---------------------------------------------------------------------------
+-- Seed Developer Tenant & User (for dev mode authentication)
+-- ---------------------------------------------------------------------------
+INSERT INTO tenants (id, name)
+VALUES ('00000000-0000-0000-0000-000000000001', 'Default Developer Tenant')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO users (id, tenant_id, email, name, is_admin)
+VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'dev@photogenic.local', 'Dev User', true)
+ON CONFLICT (id) DO NOTHING;
+

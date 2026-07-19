@@ -9,6 +9,7 @@ GET    /v1/groups/{id}  — includes active_image_count / quota remaining
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -54,7 +55,7 @@ async def create_group(
         active_image_count=0,
         quota_remaining=req.max_active_images,
         status="active",
-        created_at=None,
+        created_at=datetime.utcnow(),
     )
 
 
