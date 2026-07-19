@@ -1,63 +1,86 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { api } from '@/lib/api'
+import type { Group, Person } from '@/lib/api'
 import {
   Upload,
   Image,
   Users,
   Grid3X3,
   BarChart3,
+  Loader2,
 } from 'lucide-react'
 
 interface Props {
   groupId: string | null
 }
 
-// Mock data
-const mockAssets = Array.from({ length: 24 }, (_, i) => ({
-  id: `asset-${i}`,
-  filename: `IMG_${1000 + i}.jpg`,
-  status: 'ready' as const,
-  face_count: Math.floor(Math.random() * 5) + 1,
-}))
-
 export function GroupPage({ groupId }: Props) {
+  const [group, setGroup] = useState<Group | null>(null)
+  const [persons, setPersons] = useState<Person[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
-  const [uploads, setUploads] = useState<{ name: string; progress: number }[]>([])
+  const [uploads, setUploads] = useState<{ name: string; progress: number; error?: string }[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!groupId) return
+    setLoading(true)
+    Promise.all([
+      api.getGroup(groupId),
+      api.listPersons(groupId).catch(() => ({ persons: [], total: 0 })),
+    ])
+      .then(([grp, ppl]) => {
+        setGroup(grp)
+        setPersons(ppl.persons)
+        setError(null)
+      })
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false))
+  }, [groupId])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setDragging(false)
     const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'))
-    simulateUploads(files)
-  }, [])
+    uploadFiles(files)
+  }, [groupId])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
-    simulateUploads(files)
+    uploadFiles(files)
   }
 
-  const simulateUploads = (files: File[]) => {
+  const uploadFiles = async (files: File[]) => {
+    if (!groupId) return
     const newUploads = files.map(f => ({ name: f.name, progress: 0 }))
     setUploads(prev => [...prev, ...newUploads])
-    // Simulate progress
-    newUploads.forEach((_, idx) => {
-      let p = 0
-      const interval = setInterval(() => {
-        p += Math.random() * 30
-        if (p >= 100) {
-          p = 100
-          clearInterval(interval)
-        }
-        setUploads(prev => prev.map((u, i) =>
-          i === prev.length - newUploads.length + idx ? { ...u, progress: Math.min(p, 100) } : u
+
+    for (let i = 0; i < files.length; i++) {
+      try {
+        setUploads(prev => prev.map((u, idx) =>
+          idx === prev.length - files.length + i ? { ...u, progress: 50 } : u
         ))
-      }, 300)
-    })
+        await api.uploadAsset(groupId, files[i])
+        setUploads(prev => prev.map((u, idx) =>
+          idx === prev.length - files.length + i ? { ...u, progress: 100 } : u
+        ))
+      } catch (err: any) {
+        setUploads(prev => prev.map((u, idx) =>
+          idx === prev.length - files.length + i ? { ...u, progress: 100, error: err.message } : u
+        ))
+      }
+    }
+    // Refresh group data after uploads
+    try {
+      const grp = await api.getGroup(groupId)
+      setGroup(grp)
+    } catch {}
   }
 
   if (!groupId) {
@@ -72,12 +95,24 @@ export function GroupPage({ groupId }: Props) {
     )
   }
 
-  const group = {
-    name: 'Wedding 2024',
-    active_image_count: 3420,
-    max_active_images: 15000,
-    persons: 47,
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto flex items-center justify-center h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
   }
+
+  if (error || !group) {
+    return (
+      <div className="max-w-7xl mx-auto flex items-center justify-center h-[60vh]">
+        <div className="text-center space-y-3">
+          <p className="text-destructive">{error || 'Group not found'}</p>
+        </div>
+      </div>
+    )
+  }
+
   const pct = Math.round((group.active_image_count / group.max_active_images) * 100)
 
   return (
@@ -87,7 +122,7 @@ export function GroupPage({ groupId }: Props) {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">{group.name}</h2>
           <p className="text-muted-foreground mt-1">
-            {group.active_image_count.toLocaleString()} images · {group.persons} people identified
+            {group.active_image_count.toLocaleString()} images · {persons.length} people identified
           </p>
         </div>
         <div className="flex gap-2">
@@ -114,16 +149,16 @@ export function GroupPage({ groupId }: Props) {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="assets" className="space-y-6">
+      <Tabs defaultValue="upload" className="space-y-6">
         <TabsList className="grid w-full max-w-md grid-cols-3">
-          <TabsTrigger value="assets" className="cursor-pointer">
-            <Image className="h-4 w-4 mr-2" /> Assets
-          </TabsTrigger>
-          <TabsTrigger value="people" className="cursor-pointer">
-            <Users className="h-4 w-4 mr-2" /> People
-          </TabsTrigger>
           <TabsTrigger value="upload" className="cursor-pointer">
             <Upload className="h-4 w-4 mr-2" /> Upload
+          </TabsTrigger>
+          <TabsTrigger value="people" className="cursor-pointer">
+            <Users className="h-4 w-4 mr-2" /> People ({persons.length})
+          </TabsTrigger>
+          <TabsTrigger value="assets" className="cursor-pointer">
+            <Image className="h-4 w-4 mr-2" /> Assets
           </TabsTrigger>
         </TabsList>
 
@@ -164,9 +199,40 @@ export function GroupPage({ groupId }: Props) {
                     <p className="text-sm font-medium">{u.name}</p>
                     <Progress value={u.progress} className="h-1 mt-1.5" />
                   </div>
-                  <Badge variant={u.progress >= 100 ? 'default' : 'secondary'} className="text-[10px]">
-                    {u.progress >= 100 ? 'Done' : `${Math.round(u.progress)}%`}
+                  <Badge
+                    variant={u.error ? 'destructive' : u.progress >= 100 ? 'default' : 'secondary'}
+                    className="text-[10px]"
+                  >
+                    {u.error ? 'Error' : u.progress >= 100 ? 'Done' : `${Math.round(u.progress)}%`}
                   </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* People Tab */}
+        <TabsContent value="people">
+          {persons.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
+              <p className="text-lg font-medium">No people identified yet</p>
+              <p className="text-sm mt-1">Upload images to start detecting and clustering faces.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              {persons.map((person) => (
+                <div
+                  key={person.id}
+                  className="text-center p-4 rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-300 cursor-pointer hover:-translate-y-1 group"
+                >
+                  <div className="h-16 w-16 rounded-full bg-muted mx-auto mb-3 flex items-center justify-center border-2 border-border group-hover:border-primary transition-colors">
+                    <Users className="h-6 w-6 text-muted-foreground/40" />
+                  </div>
+                  <p className="text-sm font-semibold group-hover:text-primary transition-colors">
+                    {person.name || 'Unknown'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{person.face_count} photos</p>
                 </div>
               ))}
             </div>
@@ -175,40 +241,10 @@ export function GroupPage({ groupId }: Props) {
 
         {/* Assets Tab */}
         <TabsContent value="assets">
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
-            {mockAssets.map((asset) => (
-              <div
-                key={asset.id}
-                className="aspect-square rounded-lg bg-muted flex items-center justify-center text-2xl cursor-pointer border-2 border-transparent hover:border-primary transition-all duration-150 hover:scale-105 group relative overflow-hidden"
-              >
-                <Image className="h-8 w-8 text-muted-foreground/30" />
-                {asset.face_count > 0 && (
-                  <div className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                    <Users className="h-2.5 w-2.5" /> {asset.face_count}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </TabsContent>
-
-        {/* People Tab */}
-        <TabsContent value="people">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            {Array.from({ length: 12 }, (_, i) => (
-              <div
-                key={i}
-                className="text-center p-4 rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-300 cursor-pointer hover:-translate-y-1 group"
-              >
-                <div className="h-16 w-16 rounded-full bg-muted mx-auto mb-3 flex items-center justify-center border-2 border-border group-hover:border-primary transition-colors">
-                  <Users className="h-6 w-6 text-muted-foreground/40" />
-                </div>
-                <p className="text-sm font-semibold group-hover:text-primary transition-colors">
-                  {i < 5 ? ['Alex Chen', 'Sarah Lee', 'Mike Ross', 'Emma Watson', 'David Kim'][i] : `Person ${i + 1}`}
-                </p>
-                <p className="text-xs text-muted-foreground">{Math.floor(Math.random() * 40) + 3} photos</p>
-              </div>
-            ))}
+          <div className="text-center py-12 text-muted-foreground">
+            <Image className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
+            <p className="text-lg font-medium">{group.active_image_count} images in this group</p>
+            <p className="text-sm mt-1">Asset thumbnails will appear here after processing.</p>
           </div>
         </TabsContent>
       </Tabs>

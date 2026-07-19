@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Page } from '@/App'
 import type { Group } from '@/lib/api'
+import { api } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -17,44 +18,50 @@ import {
   Zap,
   Shield,
   Brain,
+  Loader2,
 } from 'lucide-react'
-
-// Mock data for demo (replaced by API calls in production)
-const mockGroups: Group[] = [
-  { id: '1', tenant_id: 't1', name: 'Wedding 2024', max_active_images: 15000, active_image_count: 3420, quota_remaining: 11580, status: 'active', created_at: '2024-06-15' },
-  { id: '2', tenant_id: 't1', name: 'Corporate Headshots', max_active_images: 15000, active_image_count: 890, quota_remaining: 14110, status: 'active', created_at: '2024-07-01' },
-  { id: '3', tenant_id: 't1', name: 'Event Photography', max_active_images: 15000, active_image_count: 12450, quota_remaining: 2550, status: 'active', created_at: '2024-05-20' },
-  { id: '4', tenant_id: 't1', name: 'Family Portraits', max_active_images: 15000, active_image_count: 156, quota_remaining: 14844, status: 'active', created_at: '2024-08-01' },
-]
 
 interface Props {
   onNavigate: (page: Page, groupId?: string) => void
 }
 
 export function DashboardPage({ onNavigate }: Props) {
-  const [groups, setGroups] = useState<Group[]>(mockGroups)
+  const [groups, setGroups] = useState<Group[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [newGroupName, setNewGroupName] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+
+  useEffect(() => {
+    setLoading(true)
+    api.listGroups()
+      .then(data => {
+        setGroups(data.groups)
+        setError(null)
+      })
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false))
+  }, [])
 
   const totalImages = groups.reduce((sum, g) => sum + g.active_image_count, 0)
-  const totalPersons = 247 // mock — would come from aggregated API
-  const avgQuota = Math.round(groups.reduce((sum, g) => sum + (g.active_image_count / g.max_active_images) * 100, 0) / groups.length)
+  const avgQuota = groups.length > 0
+    ? Math.round(groups.reduce((sum, g) => sum + (g.active_image_count / g.max_active_images) * 100, 0) / groups.length)
+    : 0
 
-  const handleCreateGroup = () => {
+  const handleCreateGroup = async () => {
     if (!newGroupName.trim()) return
-    const newGroup: Group = {
-      id: crypto.randomUUID(),
-      tenant_id: 't1',
-      name: newGroupName,
-      max_active_images: 15000,
-      active_image_count: 0,
-      quota_remaining: 15000,
-      status: 'active',
-      created_at: new Date().toISOString(),
+    setCreating(true)
+    try {
+      const newGroup = await api.createGroup(newGroupName)
+      setGroups([newGroup, ...groups])
+      setNewGroupName('')
+      setDialogOpen(false)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setCreating(false)
     }
-    setGroups([newGroup, ...groups])
-    setNewGroupName('')
-    setDialogOpen(false)
   }
 
   return (
@@ -83,37 +90,44 @@ export function DashboardPage({ onNavigate }: Props) {
               <p className="text-xs text-muted-foreground">
                 Each group holds up to 15,000 images with isolated face search.
               </p>
-              <Button onClick={handleCreateGroup} className="w-full cursor-pointer">
-                Create Group
+              <Button onClick={handleCreateGroup} className="w-full cursor-pointer" disabled={creating}>
+                {creating ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Creating…</> : 'Create Group'}
               </Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
 
+      {/* Error banner */}
+      {error && (
+        <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+          {error}
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 stagger">
         <StatsCard
           label="Search Groups"
-          value={groups.length.toString()}
+          value={loading ? '—' : groups.length.toString()}
           subtitle="Active groups"
           icon={<FolderOpen className="h-5 w-5" />}
         />
         <StatsCard
           label="Total Images"
-          value={totalImages.toLocaleString()}
+          value={loading ? '—' : totalImages.toLocaleString()}
           subtitle="Across all groups"
           icon={<Image className="h-5 w-5" />}
         />
         <StatsCard
           label="People Identified"
-          value={totalPersons.toString()}
-          subtitle="Unique persons"
+          value="—"
+          subtitle="Select a group to view"
           icon={<Users className="h-5 w-5" />}
         />
         <StatsCard
           label="Avg Quota Usage"
-          value={`${avgQuota}%`}
+          value={loading ? '—' : `${avgQuota}%`}
           subtitle="Of 15K limit"
           icon={<Activity className="h-5 w-5" />}
         />
@@ -159,15 +173,29 @@ export function DashboardPage({ onNavigate }: Props) {
       {/* Groups list */}
       <div className="space-y-4">
         <h3 className="text-xl font-semibold">Search Groups</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 stagger">
-          {groups.map((group) => (
-            <GroupCard
-              key={group.id}
-              group={group}
-              onClick={() => onNavigate('group', group.id)}
-            />
-          ))}
-        </div>
+        {loading ? (
+          <div className="flex items-center justify-center h-32 text-muted-foreground">
+            <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading groups…
+          </div>
+        ) : groups.length === 0 ? (
+          <Card className="glass-card">
+            <CardContent className="pt-6 text-center text-muted-foreground">
+              <FolderOpen className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
+              <p className="text-lg font-medium">No search groups yet</p>
+              <p className="text-sm mt-1">Create your first group to start uploading images and searching faces.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 stagger">
+            {groups.map((group) => (
+              <GroupCard
+                key={group.id}
+                group={group}
+                onClick={() => onNavigate('group', group.id)}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
