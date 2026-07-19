@@ -145,7 +145,10 @@ def process_asset(self, evt: dict) -> dict:
         from PIL import Image
 
         img = Image.open(io.BytesIO(file_bytes))
-        phash = int(str(imagehash.phash(img)), 16)
+        phash_val = int(str(imagehash.phash(img)), 16)
+        if phash_val >= 2**63:
+            phash_val -= 2**64
+        phash = phash_val
 
         with conn:
             with conn.cursor() as cur:
