@@ -88,9 +88,14 @@ async def search_person(
     # Step 5: RRF fusion slot (Phase 3 — currently passthrough)
     fused = _rrf_fusion(face_rank=stage2, clip_rank=None, ocr_rank=None)
 
-    # Step 6: Build evidence + format results
+    # Step 6: Fetch calibrated search threshold and filter results
+    tau_search = await _get_tau_search(tenant_id, group_id, db_pool)
+
+    # Step 7: Build evidence + format results
     results = []
     for item in fused[:k]:
+        if item["score"] < tau_search:
+            continue
         evidence = {
             "cosine_similarity": round(item["score"], 4),
             "quality_score": round(item.get("avg_quality", 0), 4),
@@ -120,7 +125,11 @@ def _group_by_person(candidates) -> dict:
     """Group ANN candidates by person_id."""
     groups = defaultdict(list)
     for hit in candidates:
-        pid = hit.payload.get("person_id", "unknown")
+        pid = hit.payload.get("person_id")
+        if not pid:
+            # Treat each unassigned face as its own distinct item
+            face_id = hit.payload.get("face_id") or str(uuid_lib.uuid4())
+            pid = f"unknown_{face_id}"
         groups[pid].append({
             "face_id": hit.payload.get("face_id"),
             "score": hit.score,
@@ -162,9 +171,11 @@ def _person_set_aggregation(
 
         asset_ids = list(set(f.get("asset_id", "") for f in top_faces if f.get("asset_id")))
 
+        is_unknown = person_id is None or person_id.startswith("unknown")
+
         results.append({
-            "person_id": person_id if person_id != "unknown" else None,
-            "person_name": top_faces[0].get("person_name") if top_faces else None,
+            "person_id": None if is_unknown else person_id,
+            "person_name": top_faces[0].get("person_name") if (top_faces and not is_unknown) else None,
             "score": weighted_score,
             "avg_quality": avg_quality,
             "face_count": len(faces),
@@ -223,3 +234,26 @@ async def _check_access(user_id: str, group_id: str, db_pool) -> bool:
     except Exception as e:
         logger.error(f"Access check failed: {e}")
         return False
+
+
+async def _get_tau_search(
+    tenant_id: str, group_id: str, db_pool
+) -> float:
+    """Get per-group calibrated search threshold."""
+    if db_pool is None:
+        return 0.4
+
+    try:
+        async with db_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT tau_search FROM calibration_thresholds "
+                "WHERE tenant_id = $1 AND group_id = $2",
+                uuid_lib.UUID(tenant_id),
+                uuid_lib.UUID(group_id),
+            )
+            if row:
+                return float(row["tau_search"])
+    except Exception as e:
+        logger.warning(f"Failed to get calibrated search threshold: {e}")
+
+    return 0.4
