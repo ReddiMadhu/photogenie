@@ -176,13 +176,14 @@ def process_asset(self, evt: dict) -> dict:
         # ==================================================================
         exif_data = _extract_exif(file_bytes)
         if exif_data:
+            taken_at = exif_data.pop("taken_at", None)
             with conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         "UPDATE assets SET exif_data = %s, taken_at = %s WHERE id = %s",
                         (
                             json.dumps(exif_data),
-                            exif_data.get("taken_at"),
+                            taken_at,
                             str(asset_id),
                         ),
                     )
@@ -237,7 +238,7 @@ def process_asset(self, evt: dict) -> dict:
                             str(face_id), tenant_id, group_id, str(asset_id),
                             face["bbox"][0], face["bbox"][1],
                             face["bbox"][2], face["bbox"][3],
-                            str(face.get("landmarks")),
+                            json.dumps(face.get("landmarks")),
                             face["det_score"], quality,
                             face.get("model_id", "arcface_r50"),
                             face.get("model_version", "w600k_r50_v1"),
@@ -368,10 +369,16 @@ def _extract_exif(file_bytes: bytes) -> dict:
         result = {}
         for key, val in tags.items():
             result[key] = str(val)
-        # Try to parse date
+        # Try to parse date – EXIF uses "YYYY:MM:DD HH:MM:SS" but
+        # PostgreSQL expects "YYYY-MM-DD HH:MM:SS"
         date_tag = tags.get("EXIF DateTimeOriginal") or tags.get("Image DateTime")
         if date_tag:
-            result["taken_at"] = str(date_tag)
+            from datetime import datetime as _dt
+            try:
+                parsed = _dt.strptime(str(date_tag).strip(), "%Y:%m:%d %H:%M:%S")
+                result["taken_at"] = parsed.isoformat()
+            except (ValueError, TypeError):
+                result["taken_at"] = None
         return result
     except Exception:
         return {}
