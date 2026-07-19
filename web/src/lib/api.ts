@@ -77,6 +77,13 @@ export interface EvalResponse {
   calibrated_at?: string;
 }
 
+export interface ConnectorResponse {
+  id: string;
+  group_id: string;
+  kind: string;
+  status: string;
+}
+
 // --- API Methods ---
 export const api = {
   // Groups
@@ -152,10 +159,12 @@ export const api = {
 
   // Connectors
   createConnector: (kind: string, groupId: string, config: Record<string, unknown>) =>
-    request(`/connectors/${kind}`, {
+    request<ConnectorResponse>(`/connectors/${kind}`, {
       method: 'POST',
       body: JSON.stringify({ group_id: groupId, config }),
     }),
+  listConnectors: (groupId: string) =>
+    request<ConnectorResponse[]>(`/connectors?group_id=${groupId}`),
 
   // Admin
   getEval: (groupId: string) =>

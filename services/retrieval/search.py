@@ -54,9 +54,9 @@ async def search_person(
     from qdrant_client.models import Filter, FieldCondition, MatchValue
 
     oversample = min(10 * k, 500)
-    candidates = qdrant_client.search(
+    query_resp = qdrant_client.query_points(
         collection_name="faces_v1",
-        query_vector=query_embedding,
+        query=query_embedding,
         limit=oversample,
         query_filter=Filter(
             must=[
@@ -65,6 +65,7 @@ async def search_person(
             ]
         ),
     )
+    candidates = query_resp.points
 
     if not candidates:
         return {

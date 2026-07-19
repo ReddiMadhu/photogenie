@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api } from '@/lib/api'
-import type { Group, Person } from '@/lib/api'
+import type { Group, Person, ConnectorResponse } from '@/lib/api'
 import {
   Upload,
   Image,
@@ -13,6 +13,7 @@ import {
   Grid3X3,
   BarChart3,
   Loader2,
+  Link,
 } from 'lucide-react'
 
 interface Props {
@@ -22,10 +23,15 @@ interface Props {
 export function GroupPage({ groupId }: Props) {
   const [group, setGroup] = useState<Group | null>(null)
   const [persons, setPersons] = useState<Person[]>([])
+  const [connectors, setConnectors] = useState<ConnectorResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [uploads, setUploads] = useState<{ name: string; progress: number; error?: string }[]>([])
+  const [folderId, setFolderId] = useState('')
+  const [credentialsText, setCredentialsText] = useState('')
+  const [enabling, setEnabling] = useState(false)
+  const [connectorError, setConnectorError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -34,10 +40,12 @@ export function GroupPage({ groupId }: Props) {
     Promise.all([
       api.getGroup(groupId),
       api.listPersons(groupId).catch(() => ({ persons: [], total: 0 })),
+      api.listConnectors(groupId).catch(() => []),
     ])
-      .then(([grp, ppl]) => {
+      .then(([grp, ppl, conns]) => {
         setGroup(grp)
         setPersons(ppl.persons)
+        setConnectors(conns)
         setError(null)
       })
       .catch(err => setError(err.message))
@@ -81,6 +89,26 @@ export function GroupPage({ groupId }: Props) {
       const grp = await api.getGroup(groupId)
       setGroup(grp)
     } catch {}
+  }
+
+  const handleEnableGDrive = async () => {
+    if (!groupId || !folderId.trim() || !credentialsText.trim()) return
+    setEnabling(true)
+    setConnectorError(null)
+    try {
+      const parsedCreds = JSON.parse(credentialsText)
+      const newConn = await api.createConnector('gdrive', groupId, {
+        folder_id: folderId,
+        credentials: parsedCreds,
+      })
+      setConnectors([...connectors, newConn])
+      setFolderId('')
+      setCredentialsText('')
+    } catch (err: any) {
+      setConnectorError(err.message || 'Failed to parse JSON credentials')
+    } finally {
+      setEnabling(false)
+    }
   }
 
   if (!groupId) {
@@ -150,7 +178,7 @@ export function GroupPage({ groupId }: Props) {
       </Card>
 
       <Tabs defaultValue="upload" className="space-y-6">
-        <TabsList className="grid w-full max-w-md grid-cols-3">
+        <TabsList className="grid w-full max-w-lg grid-cols-4">
           <TabsTrigger value="upload" className="cursor-pointer">
             <Upload className="h-4 w-4 mr-2" /> Upload
           </TabsTrigger>
@@ -159,6 +187,9 @@ export function GroupPage({ groupId }: Props) {
           </TabsTrigger>
           <TabsTrigger value="assets" className="cursor-pointer">
             <Image className="h-4 w-4 mr-2" /> Assets
+          </TabsTrigger>
+          <TabsTrigger value="connectors" className="cursor-pointer">
+            <Link className="h-4 w-4 mr-2" /> Connectors ({connectors.length})
           </TabsTrigger>
         </TabsList>
 
@@ -245,6 +276,92 @@ export function GroupPage({ groupId }: Props) {
             <Image className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
             <p className="text-lg font-medium">{group.active_image_count} images in this group</p>
             <p className="text-sm mt-1">Asset thumbnails will appear here after processing.</p>
+          </div>
+        </TabsContent>
+
+        {/* Connectors Tab */}
+        <TabsContent value="connectors" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in-up">
+            {/* Setup Form */}
+            <Card className="glass-card">
+              <CardContent className="pt-6 space-y-4">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Link className="h-5 w-5 text-primary" /> Setup Google Drive Connector
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Sync photos automatically from a Google Drive folder.
+                </p>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Folder ID</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 1aBCdEfGhIjKlMnOpQrStUvWxYz"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    value={folderId}
+                    onChange={(e) => setFolderId(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Service Account Key (JSON)</label>
+                  <textarea
+                    placeholder='{ "type": "service_account", ... }'
+                    rows={6}
+                    className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-mono"
+                    value={credentialsText}
+                    onChange={(e) => setCredentialsText(e.target.value)}
+                  />
+                </div>
+
+                {connectorError && (
+                  <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 p-2.5 rounded-lg">
+                    {connectorError}
+                  </p>
+                )}
+
+                <Button
+                  className="w-full cursor-pointer"
+                  onClick={handleEnableGDrive}
+                  disabled={enabling || !folderId.trim() || !credentialsText.trim()}
+                >
+                  {enabling ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Connecting…</> : 'Enable Connector'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Status / Existing Connectors */}
+            <Card className="glass-card">
+              <CardContent className="pt-6 space-y-4">
+                <h3 className="text-lg font-semibold">Active Connectors</h3>
+                {connectors.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Link className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
+                    <p className="text-sm font-medium">No connectors configured</p>
+                    <p className="text-xs mt-1">Configure Google Drive to start syncing files in the background.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {connectors.map((c) => (
+                      <div key={c.id} className="flex items-center justify-between p-4 rounded-lg bg-card border border-border">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-semibold uppercase">
+                            {c.kind.substring(0, 2)}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold uppercase">{c.kind} Connector</p>
+                            <p className="text-xs text-muted-foreground">Active sync source</p>
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-400 capitalize">
+                          {c.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
       </Tabs>

@@ -50,9 +50,9 @@ async def assign_person(
     # Step 1: ANN search with mandatory group filter
     from qdrant_client.models import Filter, FieldCondition, MatchValue
 
-    search_result = qdrant_client.search(
+    query_resp = qdrant_client.query_points(
         collection_name="faces_v1",
-        query_vector=face_embedding,
+        query=face_embedding,
         limit=32,
         query_filter=Filter(
             must=[
@@ -61,6 +61,7 @@ async def assign_person(
             ]
         ),
     )
+    search_result = query_resp.points
 
     if not search_result:
         logger.debug(f"No candidates found for face {face_id} in group {group_id}")

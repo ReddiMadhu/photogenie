@@ -41,3 +41,22 @@ async def create_connector(
     return ConnectorResponse(
         id=source_id, group_id=req.group_id, kind=kind, status="active"
     )
+
+
+@router.get("", response_model=list[ConnectorResponse])
+async def list_connectors(
+    group_id: uuid.UUID,
+    user: UserInfo = Depends(get_current_user),
+):
+    """List all connectors registered for a search group."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, group_id, kind FROM sources WHERE group_id = $1 AND tenant_id = $2",
+            group_id, user.tenant_id,
+        )
+    return [
+        ConnectorResponse(id=r["id"], group_id=r["group_id"], kind=r["kind"], status="active")
+        for r in rows
+    ]
+
