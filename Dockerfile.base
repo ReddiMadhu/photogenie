@@ -1,0 +1,18 @@
+FROM python:3.11-slim
+
+# Install system dependencies + compilation tools for ARM64/x86_64
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    python3-dev \
+    cmake \
+    gcc \
+    g++ \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Pre-compile/install all Python requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
