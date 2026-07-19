@@ -62,11 +62,13 @@ from services.api.routes.assets import router as assets_router
 from services.api.routes.connectors import router as connectors_router
 from services.api.routes.feedback import router as feedback_router
 from services.api.routes.groups import router as groups_router
+from services.api.routes.images import router as images_router
 from services.api.routes.persons import router as persons_router
 from services.api.routes.search import router as search_router
 
 app.include_router(groups_router)
 app.include_router(assets_router)
+app.include_router(images_router)
 app.include_router(search_router)
 app.include_router(persons_router)
 app.include_router(feedback_router)

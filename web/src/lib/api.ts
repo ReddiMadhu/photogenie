@@ -170,3 +170,8 @@ export const api = {
   getEval: (groupId: string) =>
     request<EvalResponse>(`/admin/eval/det?group=${groupId}`),
 };
+
+/** Build a URL to stream an asset's original image from the API. */
+export function getAssetImageUrl(assetId: string): string {
+  return `${API_BASE}/assets/${assetId}/image`;
+}

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { api } from '@/lib/api'
+import { api, getAssetImageUrl } from '@/lib/api'
 import type { Group, SearchResponse } from '@/lib/api'
 
 import {
@@ -341,27 +341,36 @@ export function SearchPage({ groupId, onSelectGroup }: Props) {
                               </div>
                             </div>
 
-                            {/* Matched assets */}
+                            {/* Matched photos */}
                             <div className="space-y-3">
                               <h4 className="text-sm font-medium flex items-center gap-2">
                                 <ImageIcon className="h-4 w-4 text-primary/60" />
-                                Matched Assets
+                                Matched Photos
                               </h4>
                               {r.asset_ids && r.asset_ids.length > 0 ? (
-                                <div className="space-y-1.5">
-                                  {r.asset_ids.slice(0, 5).map((assetId, ai) => (
-                                    <div
-                                      key={ai}
-                                      className="text-xs font-mono text-muted-foreground bg-muted/50 rounded px-2 py-1.5 truncate"
-                                      title={assetId}
-                                    >
-                                      <Sparkles className="h-3 w-3 inline mr-1.5 text-primary/40" />
-                                      {assetId.slice(0, 8)}…{assetId.slice(-4)}
-                                    </div>
-                                  ))}
-                                  {r.asset_ids.length > 5 && (
-                                    <p className="text-xs text-muted-foreground">
-                                      +{r.asset_ids.length - 5} more assets
+                                <div>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {r.asset_ids.slice(0, 6).map((assetId, ai) => (
+                                      <div
+                                        key={ai}
+                                        className="aspect-square rounded-lg overflow-hidden border border-border/50 bg-muted relative group/thumb"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <img
+                                          src={getAssetImageUrl(assetId)}
+                                          alt={`Match ${ai + 1}`}
+                                          className="w-full h-full object-cover transition-transform duration-300 group-hover/thumb:scale-110"
+                                          loading="lazy"
+                                          onError={(e) => {
+                                            (e.target as HTMLImageElement).style.display = 'none';
+                                          }}
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {r.asset_ids.length > 6 && (
+                                    <p className="text-xs text-muted-foreground mt-2">
+                                      +{r.asset_ids.length - 6} more photos
                                     </p>
                                   )}
                                 </div>
