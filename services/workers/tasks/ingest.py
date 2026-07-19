@@ -109,11 +109,31 @@ def process_asset(self, evt: dict) -> dict:
         # Step 2: Fetch image bytes
         # ==================================================================
         file_path = evt.get("file_path")
+        object_id = evt.get("object_id")
+        file_bytes = None
+
         if file_path and os.path.exists(file_path):
             with open(file_path, "rb") as f:
                 file_bytes = f.read()
-        else:
-            logger.warning(f"File not found: {file_path}")
+        elif object_id:
+            try:
+                from minio import Minio
+                minio_client = Minio(
+                    os.getenv("MINIO_ENDPOINT", "minio:9000"),
+                    access_key=os.getenv("MINIO_ACCESS_KEY", "minioadmin"),
+                    secret_key=os.getenv("MINIO_SECRET_KEY", "changeme_minio_password"),
+                    secure=os.getenv("MINIO_USE_SSL", "false").lower() == "true",
+                )
+                bucket = os.getenv("MINIO_BUCKET", "photogenic")
+                response = minio_client.get_object(bucket, object_id)
+                file_bytes = response.read()
+                response.close()
+                response.release_conn()
+            except Exception as e:
+                logger.error(f"Failed to fetch from MinIO: {e}")
+
+        if not file_bytes:
+            logger.warning(f"File not found or empty: path={file_path}, object={object_id}")
             _mark_failed(conn, asset_id, group_id)
             return {"status": "file_not_found"}
 
