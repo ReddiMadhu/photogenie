@@ -14,6 +14,12 @@ import {
   Eye,
   CheckCircle,
   Loader2,
+  ChevronDown,
+  ChevronUp,
+  Image as ImageIcon,
+  Fingerprint,
+  ShieldCheck,
+  Sparkles,
 } from 'lucide-react'
 
 interface Props {
@@ -28,6 +34,7 @@ export function SearchPage({ groupId, onSelectGroup }: Props) {
   const [results, setResults] = useState<SearchResponse | null>(null)
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   // Fetch groups for the dropdown
@@ -42,12 +49,14 @@ export function SearchPage({ groupId, onSelectGroup }: Props) {
     setQueryPreview(URL.createObjectURL(file))
     setResults(null)
     setError(null)
+    setExpandedIdx(null)
   }
 
   const handleSearch = async () => {
     if (!queryFile || !groupId) return
     setSearching(true)
     setError(null)
+    setExpandedIdx(null)
     try {
       const response = await api.searchFace(groupId, queryFile)
       setResults(response)
@@ -97,7 +106,7 @@ export function SearchPage({ groupId, onSelectGroup }: Props) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Upload */}
         <div
-          className={`drop-zone rounded-xl p-8 text-center cursor-pointer min-h-[280px] flex flex-col items-center justify-center`}
+          className="drop-zone rounded-xl p-8 text-center cursor-pointer min-h-[280px] flex flex-col items-center justify-center"
           onClick={() => fileRef.current?.click()}
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
@@ -201,58 +210,186 @@ export function SearchPage({ groupId, onSelectGroup }: Props) {
             </Card>
           ) : (
             <div className="space-y-3 stagger">
-              {results.results.map((r, i) => (
-                <Card key={r.person_id || i} className="glass-card hover:border-primary/30 transition-all duration-300 cursor-pointer group">
-                  <CardContent className="pt-5 flex items-center gap-5">
-                    {/* Rank */}
-                    <div className="text-2xl font-bold text-muted-foreground/30 w-8 text-center">
-                      {i + 1}
-                    </div>
+              {results.results.map((r, i) => {
+                const isExpanded = expandedIdx === i
+                const ev = r.evidence[0]
+                const confidence = r.score >= 0.7 ? 'high' : r.score >= 0.5 ? 'medium' : 'low'
+                const confidenceColor = confidence === 'high'
+                  ? 'text-emerald-400'
+                  : confidence === 'medium'
+                    ? 'text-amber-400'
+                    : 'text-red-400'
 
-                    {/* Crops: query → match */}
-                    <div className="flex items-center gap-3">
-                      <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center border border-border text-xl">
-                        🔍
+                return (
+                  <Card
+                    key={r.person_id || i}
+                    className={`glass-card transition-all duration-300 cursor-pointer ${
+                      isExpanded ? 'border-primary/40 shadow-lg shadow-primary/5' : 'hover:border-primary/30'
+                    }`}
+                    onClick={() => setExpandedIdx(isExpanded ? null : i)}
+                  >
+                    <CardContent className="pt-5">
+                      {/* Main row */}
+                      <div className="flex items-center gap-5">
+                        {/* Rank */}
+                        <div className="text-2xl font-bold text-muted-foreground/30 w-8 text-center">
+                          {i + 1}
+                        </div>
+
+                        {/* Crops: query → match */}
+                        <div className="flex items-center gap-3">
+                          <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center border border-border text-xl">
+                            🔍
+                          </div>
+                          <ArrowRight className="h-4 w-4 text-muted-foreground/40" />
+                          <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center border border-border">
+                            <Users className="h-6 w-6 text-muted-foreground/30" />
+                          </div>
+                        </div>
+
+                        {/* Info */}
+                        <div className="flex-1">
+                          <p className="font-semibold transition-colors" style={{ color: isExpanded ? 'hsl(var(--primary))' : undefined }}>
+                            {r.person_name || 'Unknown Person'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{r.face_count} photos in group</p>
+                        </div>
+
+                        {/* Scores */}
+                        <div className="flex items-center gap-3">
+                          <Badge variant="secondary" className="font-mono text-xs">
+                            cos {r.score.toFixed(3)}
+                          </Badge>
+                          {ev?.verifier_score != null && (
+                            <Badge
+                              variant={ev.verifier_score > 0.9 ? 'default' : 'secondary'}
+                              className="font-mono text-xs"
+                            >
+                              vrf {ev.verifier_score.toFixed(3)}
+                            </Badge>
+                          )}
+                          {ev?.quality_score != null && (
+                            <Badge variant="outline" className="font-mono text-xs">
+                              q {ev.quality_score.toFixed(2)}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {/* Expand toggle */}
+                        <div className="text-muted-foreground/50">
+                          {isExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                        </div>
                       </div>
-                      <ArrowRight className="h-4 w-4 text-muted-foreground/40" />
-                      <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center border border-border">
-                        <Users className="h-6 w-6 text-muted-foreground/30" />
-                      </div>
-                    </div>
 
-                    {/* Info */}
-                    <div className="flex-1">
-                      <p className="font-semibold group-hover:text-primary transition-colors">
-                        {r.person_name || 'Unknown Person'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{r.face_count} photos in group</p>
-                    </div>
+                      {/* Expanded detail panel */}
+                      {isExpanded && (
+                        <div className="mt-5 pt-5 border-t border-border/50 animate-fade-in-up">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {/* Confidence meter */}
+                            <div className="space-y-3">
+                              <h4 className="text-sm font-medium flex items-center gap-2">
+                                <ShieldCheck className="h-4 w-4 text-primary/60" />
+                                Confidence
+                              </h4>
+                              <div className="space-y-2">
+                                <div className="flex justify-between text-xs text-muted-foreground">
+                                  <span>Match Score</span>
+                                  <span className={confidenceColor}>{(r.score * 100).toFixed(1)}%</span>
+                                </div>
+                                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full transition-all duration-500"
+                                    style={{
+                                      width: `${Math.min(r.score * 100, 100)}%`,
+                                      background: confidence === 'high'
+                                        ? 'linear-gradient(90deg, #10b981, #34d399)'
+                                        : confidence === 'medium'
+                                          ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
+                                          : 'linear-gradient(90deg, #ef4444, #f87171)',
+                                    }}
+                                  />
+                                </div>
+                                <p className="text-xs text-muted-foreground capitalize">
+                                  {confidence} confidence match
+                                </p>
+                              </div>
+                            </div>
 
-                    {/* Scores */}
-                    <div className="flex items-center gap-3">
-                      <Badge variant="secondary" className="font-mono text-xs">
-                        cos {r.score.toFixed(3)}
-                      </Badge>
-                      {r.evidence[0]?.verifier_score != null && (
-                        <Badge
-                          variant={r.evidence[0].verifier_score > 0.9 ? 'default' : 'secondary'}
-                          className="font-mono text-xs"
-                        >
-                          vrf {r.evidence[0].verifier_score.toFixed(3)}
-                        </Badge>
+                            {/* Evidence details */}
+                            <div className="space-y-3">
+                              <h4 className="text-sm font-medium flex items-center gap-2">
+                                <Fingerprint className="h-4 w-4 text-primary/60" />
+                                Evidence Details
+                              </h4>
+                              <div className="space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-muted-foreground">Cosine Similarity</span>
+                                  <span className="font-mono">{ev?.cosine_similarity?.toFixed(4) ?? '—'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-muted-foreground">Verifier Score</span>
+                                  <span className="font-mono">{ev?.verifier_score?.toFixed(4) ?? '—'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-muted-foreground">Quality Score</span>
+                                  <span className="font-mono">{ev?.quality_score?.toFixed(4) ?? '—'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-muted-foreground">Face Count</span>
+                                  <span className="font-mono">{r.face_count}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Matched assets */}
+                            <div className="space-y-3">
+                              <h4 className="text-sm font-medium flex items-center gap-2">
+                                <ImageIcon className="h-4 w-4 text-primary/60" />
+                                Matched Assets
+                              </h4>
+                              {r.asset_ids && r.asset_ids.length > 0 ? (
+                                <div className="space-y-1.5">
+                                  {r.asset_ids.slice(0, 5).map((assetId, ai) => (
+                                    <div
+                                      key={ai}
+                                      className="text-xs font-mono text-muted-foreground bg-muted/50 rounded px-2 py-1.5 truncate"
+                                      title={assetId}
+                                    >
+                                      <Sparkles className="h-3 w-3 inline mr-1.5 text-primary/40" />
+                                      {assetId.slice(0, 8)}…{assetId.slice(-4)}
+                                    </div>
+                                  ))}
+                                  {r.asset_ids.length > 5 && (
+                                    <p className="text-xs text-muted-foreground">
+                                      +{r.asset_ids.length - 5} more assets
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">
+                                  {r.face_count} face(s) matched across group
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Person ID */}
+                          {r.person_id && (
+                            <div className="mt-4 pt-3 border-t border-border/30 flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">
+                                Person ID: <span className="font-mono">{r.person_id}</span>
+                              </span>
+                              <Badge variant="outline" className={`text-xs ${confidenceColor}`}>
+                                {confidence} match
+                              </Badge>
+                            </div>
+                          )}
+                        </div>
                       )}
-                      {r.evidence[0]?.quality_score != null && (
-                        <Badge
-                          variant="outline"
-                          className="font-mono text-xs"
-                        >
-                          q {r.evidence[0].quality_score.toFixed(2)}
-                        </Badge>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                )
+              })}
             </div>
           )}
         </div>

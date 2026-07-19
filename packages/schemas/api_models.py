@@ -92,6 +92,7 @@ class SearchResult(BaseModel):
     face_count: int = 0
     evidence: list[EvidencePayload] = []
     assets: list[AssetResponse] = []
+    asset_ids: list[str] = []
 
 
 class SearchResponse(BaseModel):
