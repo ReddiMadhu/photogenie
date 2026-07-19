@@ -233,20 +233,20 @@ export function SearchPage({ groupId, onSelectGroup }: Props) {
                       <Badge variant="secondary" className="font-mono text-xs">
                         cos {r.score.toFixed(3)}
                       </Badge>
-                      {r.evidence.verifier_score != null && (
+                      {r.evidence[0]?.verifier_score != null && (
                         <Badge
-                          variant={r.evidence.verifier_score > 0.9 ? 'default' : 'secondary'}
+                          variant={r.evidence[0].verifier_score > 0.9 ? 'default' : 'secondary'}
                           className="font-mono text-xs"
                         >
-                          vrf {r.evidence.verifier_score.toFixed(3)}
+                          vrf {r.evidence[0].verifier_score.toFixed(3)}
                         </Badge>
                       )}
-                      {r.evidence.quality_score != null && (
+                      {r.evidence[0]?.quality_score != null && (
                         <Badge
                           variant="outline"
                           className="font-mono text-xs"
                         >
-                          q {r.evidence.quality_score.toFixed(2)}
+                          q {r.evidence[0].quality_score.toFixed(2)}
                         </Badge>
                       )}
                     </div>

@@ -56,7 +56,7 @@ export interface SearchResult {
     verifier_score?: number;
     group_id: string;
     match_count?: number;
-  };
+  }[];
   asset_ids: string[];
 }
 
