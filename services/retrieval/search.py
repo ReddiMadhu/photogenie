@@ -103,7 +103,7 @@ async def search_person(
             "person_name": item.get("person_name"),
             "score": round(item["score"], 4),
             "face_count": item.get("face_count", 0),
-            "evidence": evidence,
+            "evidence": [evidence],
             "asset_ids": item.get("asset_ids", []),
         })
 
