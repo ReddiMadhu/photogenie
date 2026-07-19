@@ -112,7 +112,7 @@ services:
   ml-inference:
     build:
       context: ..
-      dockerfile: services/ml-inference/Dockerfile
+      dockerfile: services/ml_inference/Dockerfile
     ports:
       - "8001:8001"
     env_file: ../.env
