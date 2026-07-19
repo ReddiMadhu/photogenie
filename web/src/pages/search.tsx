@@ -19,7 +19,6 @@ import {
   Image as ImageIcon,
   Fingerprint,
   ShieldCheck,
-  Sparkles,
 } from 'lucide-react'
 
 interface Props {
