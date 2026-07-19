@@ -15,6 +15,11 @@ celery_app = Celery(
     "photogenic",
     broker=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/1"),
     backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/2"),
+    include=[
+        "services.workers.tasks.ingest",
+        "services.workers.tasks.erase",
+        "services.workers.tasks.recluster",
+    ],
 )
 
 celery_app.conf.update(
