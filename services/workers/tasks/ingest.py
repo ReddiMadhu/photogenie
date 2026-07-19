@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import logging
 import os
 import uuid as uuid_lib
@@ -180,7 +181,7 @@ def process_asset(self, evt: dict) -> dict:
                     cur.execute(
                         "UPDATE assets SET exif_data = %s, taken_at = %s WHERE id = %s",
                         (
-                            psycopg2.extras.Json(exif_data) if hasattr(psycopg2, 'extras') else str(exif_data),
+                            json.dumps(exif_data),
                             exif_data.get("taken_at"),
                             str(asset_id),
                         ),
