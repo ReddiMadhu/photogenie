@@ -33,6 +33,7 @@ async def upload_asset(
 
     pool = await get_pool()
     asset_id = uuid.uuid4()
+    object_key = f"{user.tenant_id}/{group_id}/originals/{asset_id}/{file.filename}"
 
     # Transactional quota reservation (§5.5)
     async with pool.acquire() as conn:
@@ -53,14 +54,13 @@ async def upload_asset(
 
             # Insert asset as 'reserved'
             await conn.execute(
-                "INSERT INTO assets (id, tenant_id, group_id, filename, status) "
-                "VALUES ($1, $2, $3, $4, 'reserved')",
-                asset_id, user.tenant_id, group_id, file.filename,
+                "INSERT INTO assets (id, tenant_id, group_id, filename, source_object_id, status) "
+                "VALUES ($1, $2, $3, $4, $5, 'reserved')",
+                asset_id, user.tenant_id, group_id, file.filename, object_key,
             )
 
     # Save file to object store (MinIO)
     file_bytes = await file.read()
-    object_key = f"{user.tenant_id}/{group_id}/originals/{asset_id}/{file.filename}"
 
     try:
         from minio import Minio
@@ -102,6 +102,7 @@ async def upload_asset(
         process_asset.delay({
             "tenant_id": str(user.tenant_id),
             "group_id": str(group_id),
+            "asset_id": str(asset_id),
             "source_id": None,
             "object_id": object_key,
             "etag": None,

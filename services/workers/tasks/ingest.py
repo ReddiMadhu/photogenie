@@ -55,6 +55,7 @@ def process_asset(self, evt: dict) -> dict:
     idempotency_key = _compute_idempotency_key(evt)
     tenant_id = evt["tenant_id"]
     group_id = evt["group_id"]
+    asset_id_str = evt.get("asset_id")
 
     conn = _get_db_conn()
     try:
@@ -64,47 +65,62 @@ def process_asset(self, evt: dict) -> dict:
         with conn:
             with conn.cursor() as cur:
                 # Check idempotency
-                cur.execute(
-                    "SELECT id, status FROM assets WHERE group_id = %s "
-                    "AND source_id = %s AND source_object_id = %s AND etag = %s",
-                    (group_id, evt.get("source_id"), evt.get("object_id"), evt.get("etag")),
-                )
-                existing = cur.fetchone()
+                existing = None
+                if asset_id_str:
+                    cur.execute(
+                        "SELECT id, status FROM assets WHERE id = %s",
+                        (asset_id_str,)
+                    )
+                    existing = cur.fetchone()
+                else:
+                    cur.execute(
+                        "SELECT id, status FROM assets WHERE group_id = %s "
+                        "AND source_id IS NOT DISTINCT FROM %s "
+                        "AND source_object_id IS NOT DISTINCT FROM %s "
+                        "AND etag IS NOT DISTINCT FROM %s",
+                        (group_id, evt.get("source_id"), evt.get("object_id"), evt.get("etag")),
+                    )
+                    existing = cur.fetchone()
+
                 if existing and existing[1] == "ready":
                     logger.info(f"Asset already processed (idempotent): {idempotency_key[:12]}")
                     return {"status": "already_done", "asset_id": str(existing[0])}
 
-                # Atomic quota reservation
-                cur.execute(
-                    "UPDATE search_groups "
-                    "SET active_image_count = active_image_count + 1, updated_at = now() "
-                    "WHERE id = %s AND active_image_count < max_active_images "
-                    "RETURNING id",
-                    (group_id,),
-                )
-                reserved = cur.fetchone()
-                if not reserved:
-                    logger.warning(f"Quota exceeded for group {group_id}")
-                    return {"status": "quota_exceeded", "group_id": group_id}
-
-                # Insert asset as 'reserved'
-                asset_id = uuid_lib.uuid4()
-                cur.execute(
-                    "INSERT INTO assets (id, tenant_id, group_id, source_id, "
-                    "source_object_id, etag, filename, status) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, 'reserved') "
-                    "ON CONFLICT (group_id, source_id, source_object_id, etag) DO NOTHING "
-                    "RETURNING id",
-                    (str(asset_id), tenant_id, group_id,
-                     evt.get("source_id"), evt.get("object_id"),
-                     evt.get("etag"), evt.get("filename")),
-                )
-                row = cur.fetchone()
-                if row:
-                    asset_id = row[0]
+                if existing:
+                    # Asset already exists in status 'reserved' (quota already reserved)
+                    asset_id = existing[0]
                 else:
-                    # Conflict — already exists
-                    return {"status": "already_exists"}
+                    # Atomic quota reservation
+                    cur.execute(
+                        "UPDATE search_groups "
+                        "SET active_image_count = active_image_count + 1, updated_at = now() "
+                        "WHERE id = %s AND active_image_count < max_active_images "
+                        "RETURNING id",
+                        (group_id,),
+                    )
+                    reserved = cur.fetchone()
+                    if not reserved:
+                        logger.warning(f"Quota exceeded for group {group_id}")
+                        return {"status": "quota_exceeded", "group_id": group_id}
+
+                    # Insert asset as 'reserved'
+                    asset_id = uuid_lib.uuid4()
+                    cur.execute(
+                        "INSERT INTO assets (id, tenant_id, group_id, source_id, "
+                        "source_object_id, etag, filename, status) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, 'reserved') "
+                        "ON CONFLICT (group_id, source_id, source_object_id, etag) DO NOTHING "
+                        "RETURNING id",
+                        (str(asset_id), tenant_id, group_id,
+                         evt.get("source_id"), evt.get("object_id"),
+                         evt.get("etag"), evt.get("filename")),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        asset_id = row[0]
+                    else:
+                        # Conflict — already exists
+                        return {"status": "already_exists"}
 
         # ==================================================================
         # Step 2: Fetch image bytes
