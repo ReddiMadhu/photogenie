@@ -40,7 +40,7 @@ async def search_face(
     file_bytes = await file.read()
 
     # Step 1: Detect + embed query face via ML service
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         ml_resp = await client.post(
             f"{ML_INFERENCE_URL}/embed",
             files={"file": ("query.jpg", file_bytes, "image/jpeg")},
