@@ -86,6 +86,17 @@ def _load_image(file_bytes: bytes) -> np.ndarray:
     return img
 
 
+def _encode_crop_jpeg(crop_bgr: np.ndarray) -> str:
+    """Encode a BGR crop as base64 JPEG for persistence by workers."""
+    import base64
+    import cv2
+
+    ok, buf = cv2.imencode(".jpg", crop_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+    if not ok:
+        return ""
+    return base64.b64encode(buf.tobytes()).decode("ascii")
+
+
 @app.get("/health")
 async def health():
     return {
@@ -166,6 +177,7 @@ async def embed_face(file: UploadFile = File(...)):
             "model_id": emb_result.model_id,
             "model_version": emb_result.model_version,
             "align_matrix": face.align_matrix.tolist(),
+            "crop_jpeg_b64": _encode_crop_jpeg(face.crop),
         })
 
     return {"faces": results, "count": len(results)}

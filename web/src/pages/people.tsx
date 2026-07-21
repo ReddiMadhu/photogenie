@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { api } from '@/lib/api'
-import type { Group, Person } from '@/lib/api'
+import { api, resolveMediaUrl } from '@/lib/api'
+import type { Group, Person, PersonFace } from '@/lib/api'
+import { AuthImage } from '@/components/AuthImage'
 import {
   Users,
   Merge,
@@ -53,6 +54,13 @@ export function PeoplePage({ groupId, onSelectGroup }: Props) {
   const [inlineEditId, setInlineEditId] = useState<string | null>(null)
   const [inlineEditName, setInlineEditName] = useState('')
   const [undoToast, setUndoToast] = useState<{ id: string; name: string; timer: ReturnType<typeof setTimeout> } | null>(null)
+  const [splitPersonId, setSplitPersonId] = useState<string | null>(null)
+  const [splitFaces, setSplitFaces] = useState<PersonFace[]>([])
+  const [splitSelected, setSplitSelected] = useState<Set<string>>(new Set())
+  const [splitLoading, setSplitLoading] = useState(false)
+  const [splitError, setSplitError] = useState<string | null>(null)
+  const [personsTotal, setPersonsTotal] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
   const inlineInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch groups for dropdown
@@ -66,14 +74,70 @@ export function PeoplePage({ groupId, onSelectGroup }: Props) {
   useEffect(() => {
     if (!groupId) {
       setPersons([])
+      setPersonsTotal(0)
       return
     }
     setLoading(true)
-    api.listPersons(groupId)
-      .then(data => setPersons(data.persons))
-      .catch(() => setPersons([]))
+    api.listPersons(groupId, 50, 0)
+      .then(data => {
+        setPersons(data.persons)
+        setPersonsTotal(data.total)
+      })
+      .catch(() => {
+        setPersons([])
+        setPersonsTotal(0)
+      })
       .finally(() => setLoading(false))
   }, [groupId])
+
+  const loadMorePersons = async () => {
+    if (!groupId || loadingMore || persons.length >= personsTotal) return
+    setLoadingMore(true)
+    try {
+      const data = await api.listPersons(groupId, 50, persons.length)
+      setPersons(prev => [...prev, ...data.persons])
+      setPersonsTotal(data.total)
+    } catch {
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  const openSplitModal = async (personId: string) => {
+    if (!groupId) return
+    setSplitPersonId(personId)
+    setSplitSelected(new Set())
+    setSplitError(null)
+    setSplitLoading(true)
+    try {
+      const data = await api.listPersonFaces(groupId, personId)
+      setSplitFaces(data.faces)
+    } catch (err) {
+      setSplitError(err instanceof Error ? err.message : 'Failed to load faces')
+      setSplitFaces([])
+    } finally {
+      setSplitLoading(false)
+    }
+  }
+
+  const handleSplit = async () => {
+    if (!groupId || !splitPersonId || splitSelected.size === 0) return
+    setSplitLoading(true)
+    setSplitError(null)
+    try {
+      await api.splitPerson(groupId, splitPersonId, Array.from(splitSelected))
+      const data = await api.listPersons(groupId, 50, 0)
+      setPersons(data.persons)
+      setPersonsTotal(data.total)
+      setSplitPersonId(null)
+      setSplitFaces([])
+      setSplitSelected(new Set())
+    } catch (err) {
+      setSplitError(err instanceof Error ? err.message : 'Split failed')
+    } finally {
+      setSplitLoading(false)
+    }
+  }
 
   // Focus inline edit input when opened
   useEffect(() => {
@@ -118,7 +182,7 @@ export function PeoplePage({ groupId, onSelectGroup }: Props) {
     const sources = ids.slice(1)
     try {
       await api.mergePerson(groupId, target, sources)
-      const data = await api.listPersons(groupId)
+      const data = await api.listPersons(groupId, 50, 0)
       setPersons(data.persons)
       setSelected(new Set())
     } catch {}
@@ -156,8 +220,11 @@ export function PeoplePage({ groupId, onSelectGroup }: Props) {
     if (!undoToast || !groupId) return
     clearTimeout(undoToast.timer)
     // Re-fetch to restore
-    api.listPersons(groupId)
-      .then(data => setPersons(data.persons))
+    api.listPersons(groupId, 50, 0)
+      .then(data => {
+        setPersons(data.persons)
+        setPersonsTotal(data.total)
+      })
       .catch(() => {})
     setUndoToast(null)
   }
@@ -262,9 +329,18 @@ export function PeoplePage({ groupId, onSelectGroup }: Props) {
                 )}
 
                 <CardContent className="pt-5 text-center">
-                  {/* Letter avatar */}
-                  <div className={`h-16 w-16 rounded-full mx-auto mb-3 flex items-center justify-center border-2 border-border group-hover:border-primary transition-colors ${avatarColor}`}>
-                    <span className="text-xl font-bold">{initial}</span>
+                  {/* Face crop avatar with letter fallback */}
+                  <div className={`h-16 w-16 rounded-full mx-auto mb-3 flex items-center justify-center border-2 border-border group-hover:border-primary transition-colors overflow-hidden ${avatarColor}`}>
+                    {person.rep_face_url ? (
+                      <AuthImage
+                        src={resolveMediaUrl(person.rep_face_url)}
+                        alt={person.name || 'Person'}
+                        className="h-full w-full object-cover"
+                        fallback={<span className="text-xl font-bold">{initial}</span>}
+                      />
+                    ) : (
+                      <span className="text-xl font-bold">{initial}</span>
+                    )}
                   </div>
 
                   {/* Name — inline editable */}
@@ -341,7 +417,10 @@ export function PeoplePage({ groupId, onSelectGroup }: Props) {
                           variant="ghost"
                           size="sm"
                           className="h-9 w-9 p-0 cursor-pointer"
-                          onClick={(e) => { e.stopPropagation() }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openSplitModal(person.id)
+                          }}
                         >
                           <Scissors className="h-3.5 w-3.5" />
                         </Button>
@@ -369,6 +448,88 @@ export function PeoplePage({ groupId, onSelectGroup }: Props) {
               </Card>
             )
           })}
+        </div>
+      )}
+
+      {groupId && persons.length < personsTotal && (
+        <div className="flex justify-center">
+          <Button variant="outline" onClick={loadMorePersons} disabled={loadingMore} className="cursor-pointer">
+            {loadingMore ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Load more ({persons.length} of {personsTotal})
+          </Button>
+        </div>
+      )}
+
+      {/* Split modal */}
+      {splitPersonId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-card border border-border rounded-xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div>
+                <h3 className="font-semibold">Split person</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Select faces that belong to someone else
+                </p>
+              </div>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setSplitPersonId(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-5 overflow-y-auto flex-1">
+              {splitLoading && splitFaces.length === 0 ? (
+                <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+              ) : splitFaces.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No faces found for this person.</p>
+              ) : (
+                <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
+                  {splitFaces.map((face) => {
+                    const selectedFace = splitSelected.has(face.id)
+                    return (
+                      <button
+                        key={face.id}
+                        type="button"
+                        className={`relative aspect-square rounded-lg overflow-hidden border-2 ${
+                          selectedFace ? 'border-primary ring-2 ring-primary/30' : 'border-border'
+                        }`}
+                        onClick={() => {
+                          setSplitSelected(prev => {
+                            const next = new Set(prev)
+                            if (next.has(face.id)) next.delete(face.id)
+                            else next.add(face.id)
+                            return next
+                          })
+                        }}
+                      >
+                        <AuthImage
+                          src={face.crop_url ? resolveMediaUrl(face.crop_url) : undefined}
+                          alt="Face"
+                          className="w-full h-full object-cover"
+                          fallback={<div className="w-full h-full bg-muted flex items-center justify-center text-xs">?</div>}
+                        />
+                        {selectedFace && (
+                          <CheckCircle className="absolute top-1 right-1 h-4 w-4 text-primary" />
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {splitError && (
+                <p className="text-sm text-destructive mt-3">{splitError}</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-4 border-t border-border">
+              <Button variant="ghost" onClick={() => setSplitPersonId(null)}>Cancel</Button>
+              <Button
+                onClick={handleSplit}
+                disabled={splitLoading || splitSelected.size === 0}
+                className="cursor-pointer"
+              >
+                {splitLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Scissors className="h-4 w-4 mr-2" />}
+                Split {splitSelected.size || ''} face{splitSelected.size === 1 ? '' : 's'}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 

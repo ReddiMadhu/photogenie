@@ -161,14 +161,15 @@ async def delete_asset(
                 asset_id,
             )
 
-            # Get face embedding IDs for vector deletion
+            # Get face embedding IDs and crop paths for cleanup
             face_rows = await conn.fetch(
-                "SELECT embedding_id FROM faces WHERE asset_id = $1",
+                "SELECT embedding_id, crop_path FROM faces WHERE asset_id = $1",
                 asset_id,
             )
 
     # Delete vectors from Qdrant
     embedding_ids = [str(r["embedding_id"]) for r in face_rows if r["embedding_id"]]
+    crop_paths = [r["crop_path"] for r in face_rows if r["crop_path"]]
     if embedding_ids:
         try:
             from qdrant_client import QdrantClient
@@ -184,6 +185,29 @@ async def delete_asset(
             )
         except Exception:
             pass
+
+    # Delete face crops from MinIO
+    if crop_paths:
+        try:
+            from minio import Minio
+            minio_client = Minio(
+                os.getenv("MINIO_ENDPOINT", "minio:9000"),
+                access_key=os.getenv("MINIO_ACCESS_KEY", "minioadmin"),
+                secret_key=os.getenv("MINIO_SECRET_KEY", "changeme_minio_password"),
+                secure=os.getenv("MINIO_USE_SSL", "false").lower() == "true",
+            )
+            bucket = os.getenv("MINIO_BUCKET", "photogenic")
+            for path in crop_paths:
+                try:
+                    minio_client.remove_object(bucket, path)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # Delete face rows
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM faces WHERE asset_id = $1", asset_id)
 
     # Audit
     async with pool.acquire() as conn:

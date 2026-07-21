@@ -8,6 +8,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # Environment — "development" allows auth fallback; anything else fails closed
+    environment: str = "development"
+
     # Postgres
     postgres_host: str = "postgres"
     postgres_port: int = 5432
@@ -42,9 +45,18 @@ class Settings(BaseSettings):
     # API
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     # Logging
     log_level: str = "INFO"
+
+    @property
+    def is_development(self) -> bool:
+        return self.environment.lower() in {"development", "dev", "local"}
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     class Config:
         env_file = ".env"

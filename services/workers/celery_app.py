@@ -1,8 +1,7 @@
 """
 Celery Application — §5.5 / §5.9
 
-Redis broker, task routing, retry configuration.
-Concurrency: 2-4 ML tasks (GPU) or 1-2 (CPU).
+Redis broker, task routing, retry configuration, Beat schedule.
 """
 
 from __future__ import annotations
@@ -10,6 +9,7 @@ from __future__ import annotations
 import os
 
 from celery import Celery
+from celery.schedules import crontab
 
 celery_app = Celery(
     "photogenic",
@@ -19,37 +19,33 @@ celery_app = Celery(
         "services.workers.tasks.ingest",
         "services.workers.tasks.erase",
         "services.workers.tasks.recluster",
+        "services.workers.tasks.sync_connectors",
     ],
 )
 
 celery_app.conf.update(
-    # Task routing
     task_routes={
         "services.workers.tasks.ingest.*": {"queue": "ingest"},
         "services.workers.tasks.recluster.*": {"queue": "clustering"},
         "services.workers.tasks.erase.*": {"queue": "erasure"},
+        "connectors.*": {"queue": "ingest"},
     },
-
-    # Retry defaults
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
-
-    # Concurrency — do not unbounded-parallelize InsightFace sessions (§5.9)
     worker_concurrency=int(os.getenv("CELERY_CONCURRENCY", "2")),
-
-    # Serialization
     task_serializer="json",
     result_serializer="json",
     accept_content=["json"],
-
-    # Time limits
-    task_time_limit=600,        # 10 min hard limit
-    task_soft_time_limit=540,   # 9 min soft limit
-
-    # Result expiry
+    task_time_limit=600,
+    task_soft_time_limit=540,
     result_expires=3600,
+    beat_schedule={
+        "sync-gdrive-every-15-min": {
+            "task": "connectors.sync_all_gdrive",
+            "schedule": crontab(minute="*/15"),
+        },
+    },
 )
 
-# Auto-discover tasks
 celery_app.autodiscover_tasks(["services.workers.tasks"])

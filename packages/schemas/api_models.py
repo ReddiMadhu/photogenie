@@ -87,6 +87,9 @@ class EvidencePayload(BaseModel):
     source: Optional[str] = None
     acl_basis: Optional[str] = None
     group_id: uuid.UUID
+    match_count: Optional[int] = None
+    query_face_id: Optional[uuid.UUID] = None
+    matched_face_id: Optional[uuid.UUID] = None
 
 
 class SearchResult(BaseModel):
@@ -125,6 +128,19 @@ class PersonResponse(BaseModel):
 
 class PersonListResponse(BaseModel):
     persons: list[PersonResponse]
+    total: int
+
+
+class PersonFaceResponse(BaseModel):
+    id: uuid.UUID
+    asset_id: uuid.UUID
+    crop_url: Optional[str] = None
+    quality: Optional[float] = None
+    bbox: Optional[list[int]] = None
+
+
+class PersonFaceListResponse(BaseModel):
+    faces: list[PersonFaceResponse]
     total: int
 
 
@@ -167,7 +183,9 @@ class ConnectorResponse(BaseModel):
     id: uuid.UUID
     group_id: uuid.UUID
     kind: str
-    status: str = "active"
+    status: str = "configured"
+    last_sync_at: Optional[str] = None
+    last_error: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { api, getAssetImageUrl } from '@/lib/api'
+import { api, getAssetImageUrl, resolveMediaUrl } from '@/lib/api'
 import type { Group, Person, ConnectorResponse, Asset } from '@/lib/api'
+import { AuthImage } from '@/components/AuthImage'
 import {
   Upload,
   Image,
@@ -15,6 +16,8 @@ import {
   Link,
   FolderOpen,
   ArrowRight,
+  Trash2,
+  RefreshCw,
 } from 'lucide-react'
 
 interface Props {
@@ -27,6 +30,8 @@ export function GroupPage({ groupId, onSelectGroup }: Props) {
   const [persons, setPersons] = useState<Person[]>([])
   const [connectors, setConnectors] = useState<ConnectorResponse[]>([])
   const [assets, setAssets] = useState<Asset[]>([])
+  const [assetsTotal, setAssetsTotal] = useState(0)
+  const [loadingMoreAssets, setLoadingMoreAssets] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -52,11 +57,39 @@ export function GroupPage({ groupId, onSelectGroup }: Props) {
         setPersons(ppl.persons)
         setConnectors(conns)
         setAssets(asts.assets)
+        setAssetsTotal(asts.total)
         setError(null)
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
   }, [groupId])
+
+  const loadMoreAssets = async () => {
+    if (!groupId || loadingMoreAssets || assets.length >= assetsTotal) return
+    setLoadingMoreAssets(true)
+    try {
+      const data = await api.listAssets(groupId, 50, assets.length)
+      setAssets(prev => [...prev, ...data.assets])
+      setAssetsTotal(data.total)
+    } catch {
+    } finally {
+      setLoadingMoreAssets(false)
+    }
+  }
+
+  const handleDeleteAsset = async (assetId: string) => {
+    if (!groupId) return
+    if (!confirm('Delete this photo? Faces and vectors will be removed.')) return
+    try {
+      await api.deleteAsset(groupId, assetId)
+      setAssets(prev => prev.filter(a => a.id !== assetId))
+      setAssetsTotal(t => Math.max(0, t - 1))
+      const grp = await api.getGroup(groupId)
+      setGroup(grp)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed')
+    }
+  }
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -293,8 +326,17 @@ export function GroupPage({ groupId, onSelectGroup }: Props) {
                   key={person.id}
                   className="text-center p-4 rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-300 cursor-pointer hover:-translate-y-1 group"
                 >
-                  <div className="h-16 w-16 rounded-full bg-muted mx-auto mb-3 flex items-center justify-center border-2 border-border group-hover:border-primary transition-colors">
-                    <Users className="h-6 w-6 text-muted-foreground/40" />
+                  <div className="h-16 w-16 rounded-full bg-muted mx-auto mb-3 flex items-center justify-center border-2 border-border group-hover:border-primary transition-colors overflow-hidden">
+                    {person.rep_face_url ? (
+                      <AuthImage
+                        src={person.rep_face_url.startsWith('http') ? person.rep_face_url : `${window.location.protocol}//${window.location.hostname}:8000${person.rep_face_url}`}
+                        alt={person.name || 'Person'}
+                        className="h-full w-full object-cover"
+                        fallback={<Users className="h-6 w-6 text-muted-foreground/40" />}
+                      />
+                    ) : (
+                      <Users className="h-6 w-6 text-muted-foreground/40" />
+                    )}
                   </div>
                   <p className="text-sm font-semibold group-hover:text-primary transition-colors">
                     {person.name || 'Unknown'}
@@ -323,7 +365,7 @@ export function GroupPage({ groupId, onSelectGroup }: Props) {
                 >
                   <div className="aspect-square bg-muted relative overflow-hidden flex items-center justify-center">
                     {asset.status === 'ready' && asset.id ? (
-                      <img
+                      <AuthImage
                         src={getAssetImageUrl(asset.id)}
                         alt={asset.filename || 'Asset'}
                         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
@@ -335,6 +377,14 @@ export function GroupPage({ groupId, onSelectGroup }: Props) {
                         <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{asset.status}</span>
                       </div>
                     )}
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="absolute top-2 right-2 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      onClick={() => handleDeleteAsset(asset.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                   <div className="p-3 bg-muted/20 border-t border-border/50 text-xs">
                     <p className="font-medium truncate" title={asset.filename}>{asset.filename || 'Unnamed Image'}</p>
@@ -345,6 +395,14 @@ export function GroupPage({ groupId, onSelectGroup }: Props) {
                 </div>
               ))}
             </div>
+            {assets.length < assetsTotal && (
+              <div className="flex justify-center pt-2">
+                <Button variant="outline" onClick={loadMoreAssets} disabled={loadingMoreAssets} className="cursor-pointer">
+                  {loadingMoreAssets ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Load more ({assets.length} of {assetsTotal})
+                </Button>
+              </div>
+            )}
           )}
         </TabsContent>
 
@@ -402,7 +460,7 @@ export function GroupPage({ groupId, onSelectGroup }: Props) {
             {/* Status / Existing Connectors */}
             <Card className="glass-card">
               <CardContent className="pt-6 space-y-4">
-                <h3 className="text-lg font-semibold">Active Sources</h3>
+                <h3 className="text-lg font-semibold">Configured Sources</h3>
                 {connectors.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <Link className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
@@ -412,19 +470,53 @@ export function GroupPage({ groupId, onSelectGroup }: Props) {
                 ) : (
                   <div className="space-y-3">
                     {connectors.map((c) => (
-                      <div key={c.id} className="flex items-center justify-between p-4 rounded-lg bg-card border border-border">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-semibold uppercase">
+                      <div key={c.id} className="flex items-center justify-between p-4 rounded-lg bg-card border border-border gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center text-primary font-semibold uppercase flex-shrink-0">
                             {c.kind.substring(0, 2)}
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <p className="text-sm font-semibold uppercase">{c.kind} Connector</p>
-                            <p className="text-xs text-muted-foreground">Active sync source</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {c.status === 'configured' && 'Configured — awaiting first sync'}
+                              {c.status === 'synced' && `Last sync: ${c.last_sync_at ? new Date(c.last_sync_at).toLocaleString() : 'recently'}`}
+                              {c.status === 'error' && (c.last_error || 'Sync error')}
+                              {c.status === 'active' && 'Active'}
+                            </p>
                           </div>
                         </div>
-                        <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-400 capitalize">
-                          {c.status}
-                        </Badge>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {c.kind === 'gdrive' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1 cursor-pointer"
+                              onClick={async () => {
+                                try {
+                                  await api.syncConnector(c.id)
+                                  const refreshed = await api.listConnectors(groupId!)
+                                  setConnectors(refreshed)
+                                } catch (err) {
+                                  setConnectorError(err instanceof Error ? err.message : 'Sync failed')
+                                }
+                              }}
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" /> Sync now
+                            </Button>
+                          )}
+                          <Badge
+                            variant="secondary"
+                            className={`capitalize ${
+                              c.status === 'error'
+                                ? 'bg-destructive/10 text-destructive'
+                                : c.status === 'synced' || c.status === 'active'
+                                  ? 'bg-emerald-500/10 text-emerald-400'
+                                  : 'bg-amber-500/10 text-amber-400'
+                            }`}
+                          >
+                            {c.status}
+                          </Badge>
+                        </div>
                       </div>
                     ))}
                   </div>

@@ -142,7 +142,7 @@ CREATE TABLE faces (
     id              uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id       uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     group_id        uuid NOT NULL REFERENCES search_groups(id) ON DELETE CASCADE,
-    asset_id        uuid NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    asset_id        uuid REFERENCES assets(id) ON DELETE CASCADE,  -- NULL for query-time faces
     bbox_x          int NOT NULL,
     bbox_y          int NOT NULL,
     bbox_w          int NOT NULL,

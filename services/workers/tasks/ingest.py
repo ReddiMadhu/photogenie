@@ -242,14 +242,25 @@ def process_asset(self, evt: dict) -> dict:
             face_id = uuid_lib.uuid4()
             embedding_id = uuid_lib.uuid4()
 
+            # Persist aligned face crop to MinIO when available
+            crop_path = _store_face_crop(
+                tenant_id=tenant_id,
+                group_id=group_id,
+                face_id=str(face_id),
+                crop_jpeg_b64=face.get("crop_jpeg_b64"),
+                bbox=face.get("bbox"),
+                image_bytes=file_bytes,
+            )
+
             # Insert face record
             with conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         "INSERT INTO faces (id, tenant_id, group_id, asset_id, "
                         "bbox_x, bbox_y, bbox_w, bbox_h, landmarks, "
-                        "det_score, quality, model_id, model_version, embedding_id) "
-                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                        "det_score, quality, model_id, model_version, "
+                        "embedding_id, crop_path) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                         (
                             str(face_id), tenant_id, group_id, str(asset_id),
                             face["bbox"][0], face["bbox"][1],
@@ -259,6 +270,7 @@ def process_asset(self, evt: dict) -> dict:
                             face.get("model_id", "arcface_r50"),
                             face.get("model_version", "w600k_r50_v1"),
                             str(embedding_id),
+                            crop_path,
                         ),
                     )
 
@@ -282,6 +294,7 @@ def process_asset(self, evt: dict) -> dict:
 
             kept_faces.append({
                 "face_id": str(face_id),
+                "embedding_id": str(embedding_id),
                 "embedding": face["embedding"],
                 "quality": quality,
             })
@@ -289,6 +302,8 @@ def process_asset(self, evt: dict) -> dict:
         # ==================================================================
         # Step 7: Person assignment (via Identity service)
         # ==================================================================
+        from packages.common.qdrant_identity import set_person_payload
+
         with httpx.Client(timeout=30.0) as client:
             for face in kept_faces:
                 try:
@@ -300,18 +315,32 @@ def process_asset(self, evt: dict) -> dict:
                             "quality": face["quality"],
                             "tenant_id": tenant_id,
                             "group_id": group_id,
+                            "embedding_id": face["embedding_id"],
                         },
                     )
                     if resp.status_code == 200:
                         result = resp.json()
                         if result.get("assigned") and result.get("person_id"):
-                            # Update face with person_id
+                            person_id = result["person_id"]
+                            # Ensure Postgres face.person_id (identity may already set it)
                             with conn:
                                 with conn.cursor() as cur:
                                     cur.execute(
                                         "UPDATE faces SET person_id = %s WHERE id = %s",
-                                        (result["person_id"], face["face_id"]),
+                                        (person_id, face["face_id"]),
                                     )
+                            # Ensure Qdrant payload (identity may already set it)
+                            try:
+                                set_person_payload(
+                                    [face["embedding_id"]],
+                                    person_id,
+                                    qdrant_client=qdrant,
+                                )
+                            except Exception as sync_err:
+                                logger.error(
+                                    f"Qdrant sync failed after assign for "
+                                    f"{face['face_id']}: {sync_err}"
+                                )
                 except Exception as e:
                     logger.warning(f"Person assignment failed for {face['face_id']}: {e}")
 
@@ -398,3 +427,78 @@ def _extract_exif(file_bytes: bytes) -> dict:
         return result
     except Exception:
         return {}
+
+
+def _store_face_crop(
+    tenant_id: str,
+    group_id: str,
+    face_id: str,
+    crop_jpeg_b64: str | None,
+    bbox: list | None,
+    image_bytes: bytes,
+) -> str | None:
+    """
+    Upload a face crop to MinIO and return the object key.
+
+    Prefers the aligned JPEG from ML; falls back to a bbox crop from the original.
+    """
+    import base64
+
+    crop_bytes = None
+    if crop_jpeg_b64:
+        try:
+            crop_bytes = base64.b64decode(crop_jpeg_b64)
+        except Exception:
+            crop_bytes = None
+
+    if not crop_bytes and bbox and len(bbox) >= 4:
+        try:
+            import cv2
+            import numpy as np
+
+            arr = np.frombuffer(image_bytes, np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if img is not None:
+                x, y, w, h = [int(v) for v in bbox[:4]]
+                pad = int(0.2 * max(w, h))
+                x0 = max(0, x - pad)
+                y0 = max(0, y - pad)
+                x1 = min(img.shape[1], x + w + pad)
+                y1 = min(img.shape[0], y + h + pad)
+                crop = img[y0:y1, x0:x1]
+                if crop.size > 0:
+                    crop = cv2.resize(crop, (112, 112), interpolation=cv2.INTER_AREA)
+                    ok, buf = cv2.imencode(".jpg", crop, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                    if ok:
+                        crop_bytes = buf.tobytes()
+        except Exception as e:
+            logger.warning(f"BBox crop failed for face {face_id}: {e}")
+
+    if not crop_bytes:
+        return None
+
+    object_key = f"{tenant_id}/{group_id}/crops/{face_id}.jpg"
+    try:
+        from minio import Minio
+
+        minio_client = Minio(
+            os.getenv("MINIO_ENDPOINT", "minio:9000"),
+            access_key=os.getenv("MINIO_ACCESS_KEY", "minioadmin"),
+            secret_key=os.getenv("MINIO_SECRET_KEY", "changeme_minio_password"),
+            secure=os.getenv("MINIO_USE_SSL", "false").lower() == "true",
+        )
+        bucket = os.getenv("MINIO_BUCKET", "photogenic")
+        if not minio_client.bucket_exists(bucket):
+            minio_client.make_bucket(bucket)
+
+        minio_client.put_object(
+            bucket,
+            object_key,
+            io.BytesIO(crop_bytes),
+            length=len(crop_bytes),
+            content_type="image/jpeg",
+        )
+        return object_key
+    except Exception as e:
+        logger.error(f"Failed to store crop for face {face_id}: {e}")
+        return None

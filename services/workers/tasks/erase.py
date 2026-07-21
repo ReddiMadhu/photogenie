@@ -30,11 +30,11 @@ def erase_person(self, tenant_id: str, group_id: str, person_id: str, requested_
             password=os.getenv("POSTGRES_PASSWORD", "changeme_pg_password"),
         )
 
-        # Step 1: Get all face embedding_ids for this person
+        # Step 1: Get all face embedding_ids and crop paths for this person
         with conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id, embedding_id FROM faces "
+                    "SELECT id, embedding_id, crop_path FROM faces "
                     "WHERE group_id = %s AND person_id = %s",
                     (group_id, person_id),
                 )
@@ -42,6 +42,7 @@ def erase_person(self, tenant_id: str, group_id: str, person_id: str, requested_
 
         embedding_ids = [str(f[1]) for f in faces if f[1]]
         face_ids = [str(f[0]) for f in faces]
+        crop_paths = [f[2] for f in faces if f[2]]
 
         # Step 2: Delete vectors from Qdrant
         vectors_deleted = 0
@@ -61,6 +62,25 @@ def erase_person(self, tenant_id: str, group_id: str, person_id: str, requested_
                 vectors_deleted = len(embedding_ids)
             except Exception as e:
                 logger.error(f"Qdrant deletion failed: {e}")
+
+        # Step 2b: Delete face crops from MinIO
+        if crop_paths:
+            try:
+                from minio import Minio
+                minio_client = Minio(
+                    os.getenv("MINIO_ENDPOINT", "minio:9000"),
+                    access_key=os.getenv("MINIO_ACCESS_KEY", "minioadmin"),
+                    secret_key=os.getenv("MINIO_SECRET_KEY", "changeme_minio_password"),
+                    secure=os.getenv("MINIO_USE_SSL", "false").lower() == "true",
+                )
+                bucket = os.getenv("MINIO_BUCKET", "photogenic")
+                for path in crop_paths:
+                    try:
+                        minio_client.remove_object(bucket, path)
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.warning(f"Crop cleanup failed: {e}")
 
         # Step 3: Delete faces and person from Postgres
         with conn:

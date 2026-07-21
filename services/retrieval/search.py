@@ -96,12 +96,23 @@ async def search_person(
     for item in fused[:k]:
         if item["score"] < tau_search:
             continue
+
+        matched_face_id = item.get("best_face_id")
+        matched_crop_url = (
+            f"/v1/faces/{matched_face_id}/crop" if matched_face_id else None
+        )
+
         evidence = {
             "cosine_similarity": round(item["score"], 4),
             "quality_score": round(item.get("avg_quality", 0), 4),
             "verifier_score": round(item.get("verifier_score", item["score"]), 4),
             "group_id": group_id,
             "match_count": item.get("face_count", 0),
+            "matched_face_id": matched_face_id,
+            "matched_crop_url": matched_crop_url,
+            "query_crop_url": None,
+            "source": "ann+verifier",
+            "acl_basis": f"group:{group_id}",
         }
         results.append({
             "person_id": item.get("person_id"),
@@ -110,6 +121,7 @@ async def search_person(
             "face_count": item.get("face_count", 0),
             "evidence": [evidence],
             "asset_ids": item.get("asset_ids", []),
+            "assets": [],
         })
 
     search_time = round((time.time() - start) * 1000, 1)
@@ -170,6 +182,7 @@ def _person_set_aggregation(
         avg_quality = sum(weights) / len(weights) if weights else 0.0
 
         asset_ids = list(set(f.get("asset_id", "") for f in top_faces if f.get("asset_id")))
+        best_face_id = top_faces[0].get("face_id") if top_faces else None
 
         is_unknown = person_id is None or person_id.startswith("unknown")
 
@@ -180,6 +193,7 @@ def _person_set_aggregation(
             "avg_quality": avg_quality,
             "face_count": len(faces),
             "asset_ids": asset_ids,
+            "best_face_id": best_face_id,
         })
 
     return sorted(results, key=lambda r: r["score"], reverse=True)

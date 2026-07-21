@@ -14,11 +14,13 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-photogenic}
       POSTGRES_USER: ${POSTGRES_USER:-photogenic}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_pg_password}
-    ports:
-      - "5432:5432"
+    # Internal only — do not publish DB to host in production-like setups
+    expose:
+      - "5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ../services/api/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql:ro
+      - ../services/api/migrations/002_nullable_face_asset.sql:/docker-entrypoint-initdb.d/002_nullable_face_asset.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-photogenic}"]
       interval: 5s
@@ -27,8 +29,8 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -39,9 +41,9 @@ services:
 
   qdrant:
     image: qdrant/qdrant:v1.10.1
-    ports:
-      - "6333:6333"
-      - "6334:6334"
+    expose:
+      - "6333"
+      - "6334"
     volumes:
       - qdrant_data:/qdrant/storage
     environment:
@@ -54,9 +56,11 @@ services:
   minio:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
+    # Console only on host; S3 API stays internal
     ports:
-      - "9000:9000"
       - "9001:9001"
+    expose:
+      - "9000"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-changeme_minio_password}
@@ -77,6 +81,9 @@ services:
       dockerfile: services/api/Dockerfile
     ports:
       - "8000:8000"
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
     env_file: ../.env
     depends_on:
       postgres:
@@ -113,12 +120,28 @@ services:
       - ../services:/app/services:ro
       - ../packages:/app/packages:ro
 
+  beat:
+    build:
+      context: ..
+      dockerfile: services/workers/Dockerfile
+    command: ["celery", "-A", "services.workers.celery_app", "beat", "--loglevel=info"]
+    env_file: ../.env
+    depends_on:
+      redis:
+        condition: service_healthy
+      workers:
+        condition: service_started
+    volumes:
+      - ../services:/app/services:ro
+      - ../packages:/app/packages:ro
+
   ml-inference:
     build:
       context: ..
       dockerfile: services/ml_inference/Dockerfile
-    ports:
-      - "8001:8001"
+    # Internal Docker network only — reach via api/workers
+    expose:
+      - "8001"
     env_file: ../.env
     volumes:
       - model_cache:/root/.insightface
@@ -137,8 +160,8 @@ services:
     build:
       context: ..
       dockerfile: services/identity/Dockerfile
-    ports:
-      - "8002:8002"
+    expose:
+      - "8002"
     env_file: ../.env
     depends_on:
       postgres:
@@ -155,8 +178,8 @@ services:
     build:
       context: ..
       dockerfile: services/retrieval/Dockerfile
-    ports:
-      - "8003:8003"
+    expose:
+      - "8003"
     env_file: ../.env
     depends_on:
       postgres:

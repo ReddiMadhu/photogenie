@@ -1,5 +1,8 @@
 """
-Auth — OIDC JWT validation + RBAC on search_group_members (§5.8).
+Auth — JWT validation + RBAC on search_group_members (§5.8).
+
+Development may fall back to a mock admin user when no token is present.
+Production (ENVIRONMENT != development) fails closed with 401.
 """
 
 from __future__ import annotations
@@ -18,22 +21,37 @@ from services.api.database import get_pool
 
 security = HTTPBearer(auto_error=False)
 
+DEV_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+DEV_TENANT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+
 
 def create_dev_token(
-    user_id: str,
-    tenant_id: str,
+    user_id: str | None = None,
+    tenant_id: str | None = None,
     email: str = "dev@photogenic.local",
+    name: str = "Dev User",
     is_admin: bool = True,
 ) -> str:
     """Create a JWT for development/testing."""
     payload = {
-        "sub": user_id,
-        "tenant_id": tenant_id,
+        "sub": user_id or str(DEV_USER_ID),
+        "tenant_id": tenant_id or str(DEV_TENANT_ID),
         "email": email,
+        "name": name,
         "is_admin": is_admin,
         "exp": datetime.utcnow() + timedelta(minutes=settings.jwt_expiry_minutes),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def _dev_user() -> UserInfo:
+    return UserInfo(
+        id=DEV_USER_ID,
+        tenant_id=DEV_TENANT_ID,
+        email="dev@photogenic.local",
+        name="Dev User",
+        is_admin=True,
+    )
 
 
 async def get_current_user(
@@ -41,16 +59,18 @@ async def get_current_user(
 ) -> UserInfo:
     """
     Validate JWT and return current user info.
-    In dev mode (no token), returns a dev user.
+
+    Missing credentials:
+      - development → mock admin user
+      - otherwise → 401 Unauthorized
     """
     if credentials is None:
-        # Dev mode — return a default user
-        return UserInfo(
-            id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
-            tenant_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
-            email="dev@photogenic.local",
-            name="Dev User",
-            is_admin=True,
+        if settings.is_development:
+            return _dev_user()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     try:
@@ -70,6 +90,7 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {e}",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
 
@@ -121,3 +142,63 @@ async def require_group_access(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Access check failed: {e}",
         )
+
+
+async def require_asset_access(
+    user: UserInfo,
+    asset_id: uuid.UUID,
+    required_role: str = "viewer",
+) -> dict:
+    """
+    Resolve an asset and enforce group membership for the owning group.
+    Returns the asset row dict on success.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT id, tenant_id, group_id, source_object_id, filename, status, mime_type "
+            "FROM assets WHERE id = $1",
+            asset_id,
+        )
+
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+
+    if row["status"] == "deleted":
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Asset has been deleted")
+
+    if not user.is_admin and row["tenant_id"] != user.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No access to this asset",
+        )
+
+    await require_group_access(user, row["group_id"], required_role=required_role)
+    return dict(row)
+
+
+async def require_face_access(
+    user: UserInfo,
+    face_id: uuid.UUID,
+    required_role: str = "viewer",
+) -> dict:
+    """Resolve a face and enforce group membership for the owning group."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT id, tenant_id, group_id, asset_id, crop_path, person_id "
+            "FROM faces WHERE id = $1",
+            face_id,
+        )
+
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Face not found")
+
+    if not user.is_admin and row["tenant_id"] != user.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No access to this face",
+        )
+
+    await require_group_access(user, row["group_id"], required_role=required_role)
+    return dict(row)

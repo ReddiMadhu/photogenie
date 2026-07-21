@@ -7,7 +7,7 @@ import { GroupPage } from '@/pages/group'
 import { SearchPage } from '@/pages/search'
 import { PeoplePage } from '@/pages/people'
 import { AdminPage } from '@/pages/admin'
-import { api } from '@/lib/api'
+import { api, ensureAuth } from '@/lib/api'
 import type { Group } from '@/lib/api'
 
 export type Page = 'dashboard' | 'group' | 'search' | 'people' | 'admin'
@@ -16,9 +16,16 @@ function App() {
   const [page, setPage] = useState<Page>('dashboard')
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [groups, setGroups] = useState<Group[]>([])
+  const [authReady, setAuthReady] = useState(false)
+
+  // Bootstrap JWT before any API calls
+  useEffect(() => {
+    ensureAuth().finally(() => setAuthReady(true))
+  }, [])
 
   // Fetch groups on mount for auto-select and sidebar context
   useEffect(() => {
+    if (!authReady) return
     api.listGroups()
       .then(data => {
         setGroups(data.groups)
@@ -28,7 +35,7 @@ function App() {
         }
       })
       .catch(() => {})
-  }, [])
+  }, [authReady])
 
   // Listen for Ctrl+K / Cmd+K shortcuts
   useEffect(() => {

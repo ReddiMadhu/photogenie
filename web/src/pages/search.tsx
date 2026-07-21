@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { api, getAssetImageUrl } from '@/lib/api'
+import { api, getAssetImageUrl, resolveMediaUrl } from '@/lib/api'
 import type { Group, SearchResponse } from '@/lib/api'
+import { AuthImage } from '@/components/AuthImage'
 
 import {
   Search,
@@ -20,6 +21,8 @@ import {
   Clock,
   History,
   Trash2,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react'
 
 interface Props {
@@ -430,17 +433,21 @@ export function SearchPage({ groupId, onSelectGroup }: Props) {
                             )}
                           </div>
                           <ArrowRight className="h-4 w-4 text-muted-foreground/40" />
-                          {/* Matched person — first asset image */}
+                          {/* Matched person — prefer face crop */}
                           <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center border-2 border-border overflow-hidden">
-                            {r.asset_ids && r.asset_ids.length > 0 ? (
-                              <img
+                            {ev?.matched_crop_url ? (
+                              <AuthImage
+                                src={resolveMediaUrl(ev.matched_crop_url)}
+                                alt={r.person_name || 'Match'}
+                                className="w-full h-full object-cover"
+                                fallback={<Users className="h-5 w-5 text-muted-foreground/40" />}
+                              />
+                            ) : r.asset_ids && r.asset_ids.length > 0 ? (
+                              <AuthImage
                                 src={getAssetImageUrl(r.asset_ids[0])}
                                 alt={r.person_name || 'Match'}
                                 className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display = 'none';
-                                  (e.target as HTMLImageElement).parentElement!.innerHTML = `<span class="text-lg font-semibold text-muted-foreground/40">${(r.person_name || '?')[0].toUpperCase()}</span>`;
-                                }}
+                                fallback={<Users className="h-5 w-5 text-muted-foreground/40" />}
                               />
                             ) : (
                               <Users className="h-5 w-5 text-muted-foreground/40" />
@@ -501,14 +508,11 @@ export function SearchPage({ groupId, onSelectGroup }: Props) {
                                         className="aspect-square rounded-lg overflow-hidden border border-border/50 bg-muted relative group/thumb"
                                         onClick={(e) => e.stopPropagation()}
                                       >
-                                        <img
+                                        <AuthImage
                                           src={getAssetImageUrl(assetId)}
                                           alt={`Match ${ai + 1}`}
                                           className="w-full h-full object-cover transition-transform duration-300 group-hover/thumb:scale-110"
                                           loading="lazy"
-                                          onError={(e) => {
-                                            (e.target as HTMLImageElement).style.display = 'none';
-                                          }}
                                         />
                                       </div>
                                     ))}
@@ -556,6 +560,44 @@ export function SearchPage({ groupId, onSelectGroup }: Props) {
                                   </div>
                                 )}
                               </div>
+                              {groupId && ev?.query_face_id && ev?.matched_face_id && (
+                                <div className="flex gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    className="gap-1.5 cursor-pointer"
+                                    onClick={async () => {
+                                      try {
+                                        await api.submitFeedback(
+                                          groupId,
+                                          ev.query_face_id!,
+                                          ev.matched_face_id!,
+                                          true,
+                                        )
+                                      } catch { /* ignore */ }
+                                    }}
+                                  >
+                                    <ThumbsUp className="h-3.5 w-3.5" /> Same person
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-1.5 cursor-pointer"
+                                    onClick={async () => {
+                                      try {
+                                        await api.submitFeedback(
+                                          groupId,
+                                          ev.query_face_id!,
+                                          ev.matched_face_id!,
+                                          false,
+                                        )
+                                      } catch { /* ignore */ }
+                                    }}
+                                  >
+                                    <ThumbsDown className="h-3.5 w-3.5" /> Different
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>

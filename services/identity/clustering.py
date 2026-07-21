@@ -183,37 +183,120 @@ async def _reconcile_clusters(
                 existing_pids[pid] += 1
 
         if len(existing_pids) == 0:
-            # All new faces — create a new person
+            # All new faces — create a new person and assign all members
             if db_pool is not None:
                 new_person_id = uuid_lib.uuid4()
+                member_face_ids = [face_ids[i] for i in member_indices]
                 best_idx = max(member_indices, key=lambda i: qualities[i])
                 try:
                     async with db_pool.acquire() as conn:
                         await conn.execute(
                             "INSERT INTO persons (id, tenant_id, group_id, "
-                            "face_count, created_by) VALUES ($1, $2, $3, $4, $5)",
+                            "face_count, rep_face_id, created_by) "
+                            "VALUES ($1, $2, $3, $4, $5, $6)",
                             new_person_id,
                             uuid_lib.UUID(tenant_id),
                             uuid_lib.UUID(group_id),
                             len(member_indices),
+                            uuid_lib.UUID(face_ids[best_idx])
+                            if _is_uuid(face_ids[best_idx])
+                            else None,
                             "clustering",
+                        )
+                        for fid in member_face_ids:
+                            if _is_uuid(fid):
+                                await conn.execute(
+                                    "UPDATE faces SET person_id = $1 "
+                                    "WHERE id = $2 AND group_id = $3",
+                                    new_person_id,
+                                    uuid_lib.UUID(fid),
+                                    uuid_lib.UUID(group_id),
+                                )
+                        from packages.common.qdrant_identity import (
+                            async_set_person_payload_by_face_ids,
+                        )
+                        await async_set_person_payload_by_face_ids(
+                            conn,
+                            [f for f in member_face_ids if _is_uuid(f)],
+                            str(new_person_id),
+                            qdrant_client=qdrant_client,
                         )
                 except Exception as e:
                     logger.error(f"Failed to create person: {e}")
 
         elif len(existing_pids) == 1:
-            # All agree — no change needed (or assign unassigned to this person)
-            pass
+            # Assign unassigned faces in the cluster to the agreed person
+            majority_pid = next(iter(existing_pids.keys()))
+            unassigned = [
+                face_ids[i]
+                for i in member_indices
+                if not current_persons[i]
+            ]
+            if unassigned and db_pool is not None:
+                try:
+                    async with db_pool.acquire() as conn:
+                        for fid in unassigned:
+                            if _is_uuid(fid):
+                                await conn.execute(
+                                    "UPDATE faces SET person_id = $1 "
+                                    "WHERE id = $2 AND group_id = $3",
+                                    uuid_lib.UUID(majority_pid),
+                                    uuid_lib.UUID(fid),
+                                    uuid_lib.UUID(group_id),
+                                )
+                        from packages.common.qdrant_identity import (
+                            async_set_person_payload_by_face_ids,
+                        )
+                        await async_set_person_payload_by_face_ids(
+                            conn,
+                            [f for f in unassigned if _is_uuid(f)],
+                            majority_pid,
+                            qdrant_client=qdrant_client,
+                        )
+                        await conn.execute(
+                            "UPDATE persons SET face_count = ("
+                            "SELECT COUNT(*) FROM faces WHERE person_id = $1"
+                            "), updated_at = now() WHERE id = $1",
+                            uuid_lib.UUID(majority_pid),
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to assign unassigned faces: {e}")
 
         elif len(existing_pids) > 1:
-            # Multiple persons in one cluster — potential merge or contamination
-            # For now, assign to majority person; emit split events for minorities
+            # Multiple persons in one cluster — assign to majority; sync Qdrant
             majority_pid = existing_pids.most_common(1)[0][0]
             for pid, count in existing_pids.items():
                 if pid != majority_pid:
                     splits += 1
-
             merges += 1
+            if db_pool is not None:
+                minority_faces = [
+                    face_ids[i]
+                    for i in member_indices
+                    if current_persons[i] and current_persons[i] != majority_pid
+                ]
+                try:
+                    async with db_pool.acquire() as conn:
+                        for fid in minority_faces:
+                            if _is_uuid(fid):
+                                await conn.execute(
+                                    "UPDATE faces SET person_id = $1 "
+                                    "WHERE id = $2 AND group_id = $3",
+                                    uuid_lib.UUID(majority_pid),
+                                    uuid_lib.UUID(fid),
+                                    uuid_lib.UUID(group_id),
+                                )
+                        from packages.common.qdrant_identity import (
+                            async_set_person_payload_by_face_ids,
+                        )
+                        await async_set_person_payload_by_face_ids(
+                            conn,
+                            [f for f in minority_faces if _is_uuid(f)],
+                            majority_pid,
+                            qdrant_client=qdrant_client,
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to reconcile contaminated cluster: {e}")
 
     return {
         "total_faces": len(face_ids),
@@ -222,6 +305,16 @@ async def _reconcile_clusters(
         "merges": merges,
         "splits": splits,
     }
+
+
+def _is_uuid(value: Optional[str]) -> bool:
+    if not value:
+        return False
+    try:
+        uuid_lib.UUID(str(value))
+        return True
+    except (ValueError, TypeError):
+        return False
 
 
 def _fallback_threshold_cluster(

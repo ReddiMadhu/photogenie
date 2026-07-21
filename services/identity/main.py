@@ -76,6 +76,7 @@ class AssignRequest(BaseModel):
     quality: float
     tenant_id: str
     group_id: str
+    embedding_id: str | None = None
 
 
 @app.post("/assign")
@@ -90,6 +91,7 @@ async def assign_endpoint(req: AssignRequest):
         group_id=req.group_id,
         qdrant_client=qdrant,
         db_pool=db_pool,
+        embedding_id=req.embedding_id,
     )
     return {
         "face_id": req.face_id,
@@ -133,6 +135,7 @@ async def calibrate_endpoint(req: CalibrateRequest):
         tenant_id=req.tenant_id,
         group_id=req.group_id,
         db_pool=db_pool,
+        qdrant_client=qdrant,
     )
     return result
 
