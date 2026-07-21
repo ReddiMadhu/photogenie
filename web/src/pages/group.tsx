@@ -357,52 +357,54 @@ export function GroupPage({ groupId, onSelectGroup }: Props) {
               <p className="text-sm mt-1">Drag and drop photos to get started.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {assets.map((asset) => (
-                <div
-                  key={asset.id}
-                  className="rounded-xl border border-border bg-card overflow-hidden hover:border-primary/30 transition-all duration-300 relative group"
-                >
-                  <div className="aspect-square bg-muted relative overflow-hidden flex items-center justify-center">
-                    {asset.status === 'ready' && asset.id ? (
-                      <AuthImage
-                        src={getAssetImageUrl(asset.id)}
-                        alt={asset.filename || 'Asset'}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="text-center p-3">
-                        <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary/40 mb-1" />
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{asset.status}</span>
-                      </div>
-                    )}
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="absolute top-2 right-2 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                      onClick={() => handleDeleteAsset(asset.id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {assets.map((asset) => (
+                  <div
+                    key={asset.id}
+                    className="rounded-xl border border-border bg-card overflow-hidden hover:border-primary/30 transition-all duration-300 relative group"
+                  >
+                    <div className="aspect-square bg-muted relative overflow-hidden flex items-center justify-center">
+                      {asset.status === 'ready' && asset.id ? (
+                        <AuthImage
+                          src={getAssetImageUrl(asset.id)}
+                          alt={asset.filename || 'Asset'}
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="text-center p-3">
+                          <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary/40 mb-1" />
+                          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{asset.status}</span>
+                        </div>
+                      )}
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="absolute top-2 right-2 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                        onClick={() => handleDeleteAsset(asset.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <div className="p-3 bg-muted/20 border-t border-border/50 text-xs">
+                      <p className="font-medium truncate" title={asset.filename}>{asset.filename || 'Unnamed Image'}</p>
+                      <p className="text-muted-foreground text-[10px] mt-0.5">
+                        {asset.face_count} face{asset.face_count === 1 ? '' : 's'} detected
+                      </p>
+                    </div>
                   </div>
-                  <div className="p-3 bg-muted/20 border-t border-border/50 text-xs">
-                    <p className="font-medium truncate" title={asset.filename}>{asset.filename || 'Unnamed Image'}</p>
-                    <p className="text-muted-foreground text-[10px] mt-0.5">
-                      {asset.face_count} face{asset.face_count === 1 ? '' : 's'} detected
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {assets.length < assetsTotal && (
-              <div className="flex justify-center pt-2">
-                <Button variant="outline" onClick={loadMoreAssets} disabled={loadingMoreAssets} className="cursor-pointer">
-                  {loadingMoreAssets ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  Load more ({assets.length} of {assetsTotal})
-                </Button>
+                ))}
               </div>
-            )}
+              {assets.length < assetsTotal && (
+                <div className="flex justify-center pt-2">
+                  <Button variant="outline" onClick={loadMoreAssets} disabled={loadingMoreAssets} className="cursor-pointer">
+                    {loadingMoreAssets ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    Load more ({assets.length} of {assetsTotal})
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </TabsContent>
 
