@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { api, resolveMediaUrl } from '@/lib/api'
-import type { Group, Person, PersonFace } from '@/lib/api'
+import type { Person, PersonFace } from '@/lib/api'
 import { AuthImage } from '@/components/AuthImage'
 import {
   Users,
@@ -18,99 +16,138 @@ import {
   Loader2,
   Undo2,
   X,
+  LayoutGrid,
+  List,
 } from 'lucide-react'
 
-interface Props {
-  groupId: string | null
-  onSelectGroup: (id: string) => void
-}
+type Filter = 'all' | 'unnamed' | 'hidden'
+type ViewMode = 'grid' | 'list'
 
-// Colors for letter avatars — harmonious, dark-mode-friendly palette
 const AVATAR_COLORS = [
   'bg-indigo-500/20 text-indigo-300',
   'bg-emerald-500/20 text-emerald-300',
   'bg-amber-500/20 text-amber-300',
   'bg-rose-500/20 text-rose-300',
   'bg-cyan-500/20 text-cyan-300',
-  'bg-purple-500/20 text-purple-300',
-  'bg-teal-500/20 text-teal-300',
-  'bg-orange-500/20 text-orange-300',
 ]
 
-function getAvatarColor(id: string): string {
+function avatarColor(id: string) {
   let hash = 0
-  for (let i = 0; i < id.length; i++) {
-    hash = id.charCodeAt(i) + ((hash << 5) - hash)
-  }
+  for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash)
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 
-export function PeoplePage({ groupId, onSelectGroup }: Props) {
-  const [groups, setGroups] = useState<Group[]>([])
+interface Props {
+  groupId: string
+}
+
+export function PeoplePage({ groupId }: Props) {
   const [persons, setPersons] = useState<Person[]>([])
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState<Filter>('all')
+  const [view, setView] = useState<ViewMode>('grid')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [activeId, setActiveId] = useState<string | null>(null)
   const [inlineEditId, setInlineEditId] = useState<string | null>(null)
   const [inlineEditName, setInlineEditName] = useState('')
   const [undoToast, setUndoToast] = useState<{ id: string; name: string; timer: ReturnType<typeof setTimeout> } | null>(null)
-  const [splitPersonId, setSplitPersonId] = useState<string | null>(null)
+  const [splitOpen, setSplitOpen] = useState(false)
   const [splitFaces, setSplitFaces] = useState<PersonFace[]>([])
   const [splitSelected, setSplitSelected] = useState<Set<string>>(new Set())
   const [splitLoading, setSplitLoading] = useState(false)
   const [splitError, setSplitError] = useState<string | null>(null)
-  const [personsTotal, setPersonsTotal] = useState(0)
-  const [loadingMore, setLoadingMore] = useState(false)
   const inlineInputRef = useRef<HTMLInputElement>(null)
 
-  // Fetch groups for dropdown
-  useEffect(() => {
-    api.listGroups()
-      .then(data => setGroups(data.groups))
-      .catch(() => {})
-  }, [])
-
-  // Fetch persons when group changes
-  useEffect(() => {
-    if (!groupId) {
-      setPersons([])
-      setPersonsTotal(0)
-      return
+  const load = useCallback(async (offset = 0, append = false) => {
+    const data = await api.listPersons(groupId, 50, offset)
+    setPersons((prev) => (append ? [...prev, ...data.persons] : data.persons))
+    setTotal(data.total)
+    if (!append && data.persons.length) {
+      setActiveId((current) => current && data.persons.some((p) => p.id === current)
+        ? current
+        : data.persons[0].id)
     }
+  }, [groupId])
+
+  useEffect(() => {
     setLoading(true)
-    api.listPersons(groupId, 50, 0)
-      .then(data => {
-        setPersons(data.persons)
-        setPersonsTotal(data.total)
-      })
-      .catch(() => {
-        setPersons([])
-        setPersonsTotal(0)
-      })
+    setSelected(new Set())
+    setActiveId(null)
+    load(0, false)
+      .catch(() => setPersons([]))
       .finally(() => setLoading(false))
   }, [groupId])
 
-  const loadMorePersons = async () => {
-    if (!groupId || loadingMore || persons.length >= personsTotal) return
-    setLoadingMore(true)
-    try {
-      const data = await api.listPersons(groupId, 50, persons.length)
-      setPersons(prev => [...prev, ...data.persons])
-      setPersonsTotal(data.total)
-    } catch {
-    } finally {
-      setLoadingMore(false)
+  useEffect(() => {
+    if (inlineEditId && inlineInputRef.current) {
+      inlineInputRef.current.focus()
+      inlineInputRef.current.select()
     }
+  }, [inlineEditId])
+
+  const filtered = persons.filter((p) => {
+    if (filter === 'unnamed' && p.name) return false
+    if (filter === 'hidden' && !p.is_hidden) return false
+    if (search && !p.name?.toLowerCase().includes(search.toLowerCase())) return false
+    return true
+  })
+
+  const unnamedCount = persons.filter((p) => !p.name).length
+  const active = persons.find((p) => p.id === activeId) || null
+
+  const toggle = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
-  const openSplitModal = async (personId: string) => {
-    if (!groupId) return
-    setSplitPersonId(personId)
+  const handleRename = async (personId: string, newName: string) => {
+    if (!newName.trim()) {
+      setInlineEditId(null)
+      return
+    }
+    try {
+      await api.renamePerson(groupId, personId, newName.trim())
+      setPersons((prev) => prev.map((p) => (p.id === personId ? { ...p, name: newName.trim() } : p)))
+    } catch { /* ignore */ }
+    setInlineEditId(null)
+  }
+
+  const handleMerge = async () => {
+    if (selected.size < 2) return
+    const ids = Array.from(selected)
+    await api.mergePerson(groupId, ids[0], ids.slice(1))
+    await load(0, false)
+    setSelected(new Set())
+    setActiveId(ids[0])
+  }
+
+  const handleDelete = (personId: string) => {
+    if (undoToast) clearTimeout(undoToast.timer)
+    const deleted = persons.find((p) => p.id === personId)
+    setPersons((prev) => prev.filter((p) => p.id !== personId))
+    if (activeId === personId) setActiveId(null)
+    const timer = setTimeout(async () => {
+      try { await api.deletePerson(groupId, personId) } catch { /* ignore */ }
+      setUndoToast(null)
+    }, 10000)
+    setUndoToast({ id: personId, name: deleted?.name || 'Unnamed person', timer })
+  }
+
+  const openSplit = async () => {
+    if (!activeId) return
+    setSplitOpen(true)
     setSplitSelected(new Set())
     setSplitError(null)
     setSplitLoading(true)
     try {
-      const data = await api.listPersonFaces(groupId, personId)
+      const data = await api.listPersonFaces(groupId, activeId)
       setSplitFaces(data.faces)
     } catch (err) {
       setSplitError(err instanceof Error ? err.message : 'Failed to load faces')
@@ -121,17 +158,13 @@ export function PeoplePage({ groupId, onSelectGroup }: Props) {
   }
 
   const handleSplit = async () => {
-    if (!groupId || !splitPersonId || splitSelected.size === 0) return
+    if (!activeId || splitSelected.size === 0) return
     setSplitLoading(true)
-    setSplitError(null)
     try {
-      await api.splitPerson(groupId, splitPersonId, Array.from(splitSelected))
-      const data = await api.listPersons(groupId, 50, 0)
-      setPersons(data.persons)
-      setPersonsTotal(data.total)
-      setSplitPersonId(null)
-      setSplitFaces([])
-      setSplitSelected(new Set())
+      const result = await api.splitPerson(groupId, activeId, Array.from(splitSelected)) as { new_person_id?: string }
+      await load(0, false)
+      setSplitOpen(false)
+      if (result?.new_person_id) setActiveId(result.new_person_id)
     } catch (err) {
       setSplitError(err instanceof Error ? err.message : 'Split failed')
     } finally {
@@ -139,360 +172,249 @@ export function PeoplePage({ groupId, onSelectGroup }: Props) {
     }
   }
 
-  // Focus inline edit input when opened
-  useEffect(() => {
-    if (inlineEditId && inlineInputRef.current) {
-      inlineInputRef.current.focus()
-      inlineInputRef.current.select()
-    }
-  }, [inlineEditId])
-
-  const filtered = persons.filter(p =>
-    !search || (p.name?.toLowerCase().includes(search.toLowerCase()))
-  )
-
-  const toggle = (id: string) => {
-    setSelected(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  // Inline rename — click name, edit in-place, Enter to save
-  const handleInlineRename = useCallback(async (personId: string, newName: string) => {
-    if (!groupId || !newName.trim()) {
-      setInlineEditId(null)
-      return
-    }
-    try {
-      await api.renamePerson(groupId, personId, newName)
-      setPersons(prev => prev.map(p =>
-        p.id === personId ? { ...p, name: newName } : p
-      ))
-    } catch {}
-    setInlineEditId(null)
-  }, [groupId])
-
-  const handleMerge = async () => {
-    if (!groupId || selected.size < 2) return
-    const ids = Array.from(selected)
-    const target = ids[0]
-    const sources = ids.slice(1)
-    try {
-      await api.mergePerson(groupId, target, sources)
-      const data = await api.listPersons(groupId, 50, 0)
-      setPersons(data.persons)
-      setSelected(new Set())
-    } catch {}
-  }
-
-  // Soft delete with undo toast
-  const handleDelete = async (personId: string) => {
-    if (!groupId) return
-
-    // Clear any existing undo toast
-    if (undoToast) {
-      clearTimeout(undoToast.timer)
-    }
-
-    // Optimistically remove from UI
-    const deletedPerson = persons.find(p => p.id === personId)
-    setPersons(prev => prev.filter(p => p.id !== personId))
-
-    // Set undo toast — delay the actual API call
-    const timer = setTimeout(async () => {
-      try {
-        await api.deletePerson(groupId, personId)
-      } catch {}
-      setUndoToast(null)
-    }, 10000)
-
-    setUndoToast({
-      id: personId,
-      name: deletedPerson?.name || 'Unnamed person',
-      timer,
-    })
-  }
-
-  const handleUndo = () => {
-    if (!undoToast || !groupId) return
-    clearTimeout(undoToast.timer)
-    // Re-fetch to restore
-    api.listPersons(groupId, 50, 0)
-      .then(data => {
-        setPersons(data.persons)
-        setPersonsTotal(data.total)
-      })
-      .catch(() => {})
-    setUndoToast(null)
-  }
-
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="max-w-6xl mx-auto space-y-5">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">People</h2>
-          <p className="text-muted-foreground mt-1">
-            {loading ? 'Loading…' : `${persons.length} people identified · ${persons.filter(p => !p.name).length} need names`}
+          <h2 className="text-2xl font-semibold tracking-tight">People</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {loading ? 'Loading…' : `${total} identities · ${unnamedCount} need names`}
           </p>
         </div>
-
-        {selected.size > 0 && (
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary">{selected.size} selected</Badge>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="gap-1.5 cursor-pointer"
-              onClick={handleMerge}
-              disabled={selected.size < 2}
-            >
-              <Merge className="h-3.5 w-3.5" /> Merge
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="gap-1.5 cursor-pointer"
-              onClick={() => {
-                selected.forEach(id => handleDelete(id))
-                setSelected(new Set())
-              }}
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Delete
-            </Button>
+        <div className="flex items-center gap-2">
+          {selected.size > 0 && (
+            <>
+              <Badge variant="secondary">{selected.size} selected</Badge>
+              <Button size="sm" variant="secondary" className="gap-1.5 cursor-pointer" onClick={handleMerge} disabled={selected.size < 2}>
+                <Merge className="h-3.5 w-3.5" /> Merge
+              </Button>
+            </>
+          )}
+          <div className="flex border border-border rounded-md overflow-hidden">
+            <button type="button" className={`px-2 py-1.5 cursor-pointer ${view === 'grid' ? 'bg-muted' : ''}`} onClick={() => setView('grid')}>
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </button>
+            <button type="button" className={`px-2 py-1.5 cursor-pointer ${view === 'list' ? 'bg-muted' : ''}`} onClick={() => setView('list')}>
+              <List className="h-3.5 w-3.5" />
+            </button>
           </div>
-        )}
-      </div>
-
-      {/* Search + group selector */}
-      <div className="flex gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search people…"
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
         </div>
-        <select
-          className="bg-input border border-border rounded-lg px-3 py-2 text-sm min-w-[200px]"
-          value={groupId || ''}
-          onChange={(e) => onSelectGroup(e.target.value)}
-        >
-          <option value="">All projects</option>
-          {groups.map(g => (
-            <option key={g.id} value={g.id}>{g.name}</option>
-          ))}
-        </select>
       </div>
 
-      {/* Person grid */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input className="pl-9 h-9" placeholder="Filter people…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        {([
+          ['all', 'All'],
+          ['unnamed', `Needs name · ${unnamedCount}`],
+          ['hidden', 'Hidden'],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setFilter(id)}
+            className={`h-9 px-3 rounded-md text-sm cursor-pointer transition-colors ${
+              filter === id ? 'bg-muted font-medium' : 'text-muted-foreground hover:bg-muted/40'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
-        <div className="flex items-center justify-center h-32 text-muted-foreground">
-          <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading people…
-        </div>
-      ) : !groupId ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
-          <p className="text-lg font-medium">Select a project</p>
-          <p className="text-sm mt-1">Select a project to see who's been found.</p>
+        <div className="flex justify-center py-20">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : persons.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
-          <p className="text-lg font-medium">No people identified yet</p>
-          <p className="text-sm mt-1">Upload photos to start finding people.</p>
+        <div className="text-center py-20 text-muted-foreground">
+          <Users className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p className="font-medium">No people identified yet</p>
+          <p className="text-sm mt-1">Upload photos to start finding faces.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 stagger">
-          {filtered.map((person) => {
-            const avatarColor = getAvatarColor(person.id)
-            const initial = (person.name || '?')[0].toUpperCase()
+        <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-6">
+          <div>
+            {view === 'grid' ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {filtered.map((person) => {
+                  const initial = (person.name || '?')[0].toUpperCase()
+                  const color = avatarColor(person.id)
+                  return (
+                    <button
+                      key={person.id}
+                      type="button"
+                      onClick={() => setActiveId(person.id)}
+                      onDoubleClick={() => toggle(person.id)}
+                      className={`text-center p-3 rounded-xl border transition-all cursor-pointer relative ${
+                        activeId === person.id
+                          ? 'border-primary bg-muted/40'
+                          : 'border-border hover:border-primary/30'
+                      }`}
+                    >
+                      {selected.has(person.id) && (
+                        <CheckCircle className="absolute top-2 right-2 h-4 w-4 text-primary" />
+                      )}
+                      <div className={`h-14 w-14 rounded-full mx-auto mb-2 overflow-hidden flex items-center justify-center ${color}`}>
+                        {person.rep_face_url ? (
+                          <AuthImage
+                            src={resolveMediaUrl(person.rep_face_url)}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            fallback={<span className="text-lg font-bold">{initial}</span>}
+                          />
+                        ) : (
+                          <span className="text-lg font-bold">{initial}</span>
+                        )}
+                      </div>
+                      <p className="text-sm font-medium truncate">{person.name || 'Unnamed'}</p>
+                      <p className="text-xs text-muted-foreground">{person.face_count} photos</p>
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="space-y-0.5">
+                {filtered.map((person) => {
+                  const initial = (person.name || '?')[0].toUpperCase()
+                  const color = avatarColor(person.id)
+                  return (
+                    <button
+                      key={person.id}
+                      type="button"
+                      onClick={() => setActiveId(person.id)}
+                      className={`w-full flex items-center gap-3 px-2 py-2 rounded-lg text-left cursor-pointer ${
+                        activeId === person.id ? 'bg-muted/60' : 'hover:bg-muted/30'
+                      }`}
+                    >
+                      <div className={`h-9 w-9 rounded-full overflow-hidden flex items-center justify-center shrink-0 ${color}`}>
+                        {person.rep_face_url ? (
+                          <AuthImage
+                            src={resolveMediaUrl(person.rep_face_url)}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            fallback={<span className="text-sm font-bold">{initial}</span>}
+                          />
+                        ) : (
+                          <span className="text-sm font-bold">{initial}</span>
+                        )}
+                      </div>
+                      <span className="flex-1 font-medium text-sm truncate">{person.name || 'Unnamed'}</span>
+                      <span className="text-xs text-muted-foreground">{person.face_count} photos</span>
+                      {!person.name && <Badge variant="secondary" className="text-[10px]">Needs name</Badge>}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {persons.length < total && (
+              <div className="flex justify-center pt-4">
+                <Button
+                  variant="outline"
+                  className="cursor-pointer"
+                  disabled={loadingMore}
+                  onClick={async () => {
+                    setLoadingMore(true)
+                    try { await load(persons.length, true) } finally { setLoadingMore(false) }
+                  }}
+                >
+                  {loadingMore ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Load more
+                </Button>
+              </div>
+            )}
+          </div>
 
-            return (
-              <Card
-                key={person.id}
-                className={`
-                  glass-card cursor-pointer transition-all duration-300 hover:-translate-y-1 group relative
-                  ${selected.has(person.id) ? 'border-primary ring-1 ring-primary/30' : 'hover:border-primary/30'}
-                `}
-                onClick={() => toggle(person.id)}
-              >
-                {/* Selection indicator */}
-                {selected.has(person.id) && (
-                  <div className="absolute top-2 right-2 z-10">
-                    <CheckCircle className="h-5 w-5 text-primary" />
-                  </div>
-                )}
-
-                <CardContent className="pt-5 text-center">
-                  {/* Face crop avatar with letter fallback */}
-                  <div className={`h-16 w-16 rounded-full mx-auto mb-3 flex items-center justify-center border-2 border-border group-hover:border-primary transition-colors overflow-hidden ${avatarColor}`}>
-                    {person.rep_face_url ? (
+          {/* Detail panel */}
+          <div className="rounded-xl border border-border p-5 h-fit sticky top-4 space-y-4">
+            {!active ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">Select a person</p>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className={`h-14 w-14 rounded-full overflow-hidden flex items-center justify-center ${avatarColor(active.id)}`}>
+                    {active.rep_face_url ? (
                       <AuthImage
-                        src={resolveMediaUrl(person.rep_face_url)}
-                        alt={person.name || 'Person'}
+                        src={resolveMediaUrl(active.rep_face_url)}
+                        alt=""
                         className="h-full w-full object-cover"
-                        fallback={<span className="text-xl font-bold">{initial}</span>}
+                        fallback={<span className="text-xl font-bold">{(active.name || '?')[0]}</span>}
                       />
                     ) : (
-                      <span className="text-xl font-bold">{initial}</span>
+                      <span className="text-xl font-bold">{(active.name || '?')[0]}</span>
                     )}
                   </div>
-
-                  {/* Name — inline editable */}
-                  {inlineEditId === person.id ? (
-                    <input
-                      ref={inlineInputRef}
-                      className="text-sm font-semibold bg-transparent border-b border-primary text-center w-full outline-none py-0.5"
-                      value={inlineEditName}
-                      onChange={(e) => setInlineEditName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleInlineRename(person.id, inlineEditName)
-                        if (e.key === 'Escape') setInlineEditId(null)
-                      }}
-                      onBlur={() => handleInlineRename(person.id, inlineEditName)}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    <p
-                      className="text-sm font-semibold group-hover:text-primary transition-colors truncate cursor-text"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setInlineEditId(person.id)
-                        setInlineEditName(person.name || '')
-                      }}
-                      title="Click to rename"
-                    >
-                      {person.name || 'Unnamed'}
-                    </p>
+                  <div className="min-w-0 flex-1">
+                    {inlineEditId === active.id ? (
+                      <input
+                        ref={inlineInputRef}
+                        className="text-base font-semibold bg-transparent border-b border-primary outline-none w-full"
+                        value={inlineEditName}
+                        onChange={(e) => setInlineEditName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleRename(active.id, inlineEditName)
+                          if (e.key === 'Escape') setInlineEditId(null)
+                        }}
+                        onBlur={() => handleRename(active.id, inlineEditName)}
+                      />
+                    ) : (
+                      <p className="font-semibold truncate">{active.name || 'Unnamed'}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">{active.face_count} photos</p>
+                  </div>
+                  {active.consent_state === 'consented' && (
+                    <Badge variant="secondary" className="text-[10px]">Consented</Badge>
                   )}
-
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {person.face_count} photos
-                  </p>
-
-                  {/* Consent badge — simplified: only show if consented or withdrawn */}
-                  <div className="mt-2 h-5">
-                    {person.consent_state === 'consented' && (
-                      <Badge variant="secondary" className="text-[10px] gap-1">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 inline-block" />
-                        Consented
-                      </Badge>
-                    )}
-                    {person.consent_state === 'withdrawn' && (
-                      <Badge variant="destructive" className="text-[10px] gap-1">
-                        <span className="h-1.5 w-1.5 rounded-full bg-red-400 inline-block" />
-                        Withdrawn
-                      </Badge>
-                    )}
-                    {/* No badge for 'unknown'/'pending' — reduces visual noise */}
-                  </div>
-
-                  {/* Action buttons — larger for Fitts's Law */}
-                  <div className="mt-3 flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-9 w-9 p-0 cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setInlineEditId(person.id)
-                            setInlineEditName(person.name || '')
-                          }}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Rename</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-9 w-9 p-0 cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openSplitModal(person.id)
-                          }}
-                        >
-                          <Scissors className="h-3.5 w-3.5" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Split into separate people</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-9 w-9 p-0 text-destructive cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDelete(person.id)
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Delete person</TooltipContent>
-                    </Tooltip>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-      )}
-
-      {groupId && persons.length < personsTotal && (
-        <div className="flex justify-center">
-          <Button variant="outline" onClick={loadMorePersons} disabled={loadingMore} className="cursor-pointer">
-            {loadingMore ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Load more ({persons.length} of {personsTotal})
-          </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary" className="gap-1.5 cursor-pointer" onClick={() => { setInlineEditId(active.id); setInlineEditName(active.name || '') }}>
+                    <Pencil className="h-3.5 w-3.5" /> Rename
+                  </Button>
+                  <Button size="sm" variant="secondary" className="gap-1.5 cursor-pointer" onClick={openSplit}>
+                    <Scissors className="h-3.5 w-3.5" /> Split
+                  </Button>
+                  <Button size="sm" variant="ghost" className="gap-1.5 cursor-pointer" onClick={() => toggle(active.id)}>
+                    <Merge className="h-3.5 w-3.5" /> {selected.has(active.id) ? 'Deselect' : 'Select'}
+                  </Button>
+                  <Button size="sm" variant="ghost" className="gap-1.5 text-destructive cursor-pointer" onClick={() => handleDelete(active.id)}>
+                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 
       {/* Split modal */}
-      {splitPersonId && (
+      {splitOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="bg-card border border-border rounded-xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border">
               <div>
                 <h3 className="font-semibold">Split person</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Select faces that belong to someone else
-                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Select faces that belong to someone else</p>
               </div>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setSplitPersonId(null)}>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-pointer" onClick={() => setSplitOpen(false)}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
             <div className="p-5 overflow-y-auto flex-1">
               {splitLoading && splitFaces.length === 0 ? (
                 <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
-              ) : splitFaces.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">No faces found for this person.</p>
               ) : (
                 <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
                   {splitFaces.map((face) => {
-                    const selectedFace = splitSelected.has(face.id)
+                    const on = splitSelected.has(face.id)
                     return (
                       <button
                         key={face.id}
                         type="button"
-                        className={`relative aspect-square rounded-lg overflow-hidden border-2 ${
-                          selectedFace ? 'border-primary ring-2 ring-primary/30' : 'border-border'
-                        }`}
+                        className={`relative aspect-square rounded-lg overflow-hidden border-2 cursor-pointer ${on ? 'border-primary' : 'border-border'}`}
                         onClick={() => {
-                          setSplitSelected(prev => {
+                          setSplitSelected((prev) => {
                             const next = new Set(prev)
                             if (next.has(face.id)) next.delete(face.id)
                             else next.add(face.id)
@@ -502,29 +424,21 @@ export function PeoplePage({ groupId, onSelectGroup }: Props) {
                       >
                         <AuthImage
                           src={face.crop_url ? resolveMediaUrl(face.crop_url) : undefined}
-                          alt="Face"
+                          alt=""
                           className="w-full h-full object-cover"
-                          fallback={<div className="w-full h-full bg-muted flex items-center justify-center text-xs">?</div>}
+                          fallback={<div className="w-full h-full bg-muted" />}
                         />
-                        {selectedFace && (
-                          <CheckCircle className="absolute top-1 right-1 h-4 w-4 text-primary" />
-                        )}
+                        {on && <CheckCircle className="absolute top-1 right-1 h-4 w-4 text-primary" />}
                       </button>
                     )
                   })}
                 </div>
               )}
-              {splitError && (
-                <p className="text-sm text-destructive mt-3">{splitError}</p>
-              )}
+              {splitError && <p className="text-sm text-destructive mt-3">{splitError}</p>}
             </div>
             <div className="flex justify-end gap-2 px-5 py-4 border-t border-border">
-              <Button variant="ghost" onClick={() => setSplitPersonId(null)}>Cancel</Button>
-              <Button
-                onClick={handleSplit}
-                disabled={splitLoading || splitSelected.size === 0}
-                className="cursor-pointer"
-              >
+              <Button variant="ghost" className="cursor-pointer" onClick={() => setSplitOpen(false)}>Cancel</Button>
+              <Button className="cursor-pointer" onClick={handleSplit} disabled={splitLoading || splitSelected.size === 0}>
                 {splitLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Scissors className="h-4 w-4 mr-2" />}
                 Split {splitSelected.size || ''} face{splitSelected.size === 1 ? '' : 's'}
               </Button>
@@ -533,32 +447,21 @@ export function PeoplePage({ groupId, onSelectGroup }: Props) {
         </div>
       )}
 
-      {/* Undo toast */}
       {undoToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-fade-in-up">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
           <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-card border border-border shadow-xl">
-            <Trash2 className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm">
-              <span className="font-medium">{undoToast.name}</span> deleted
-            </span>
+            <span className="text-sm"><span className="font-medium">{undoToast.name}</span> deleted</span>
             <Button
               variant="ghost"
               size="sm"
               className="gap-1.5 text-primary cursor-pointer h-7"
-              onClick={handleUndo}
-            >
-              <Undo2 className="h-3.5 w-3.5" /> Undo
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 cursor-pointer"
               onClick={() => {
                 clearTimeout(undoToast.timer)
+                load(0, false)
                 setUndoToast(null)
               }}
             >
-              <X className="h-3.5 w-3.5" />
+              <Undo2 className="h-3.5 w-3.5" /> Undo
             </Button>
           </div>
         </div>
