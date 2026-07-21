@@ -62,6 +62,11 @@ class AssetResponse(BaseModel):
     thumbnail_url: Optional[str] = None
 
 
+class AssetListResponse(BaseModel):
+    assets: list[AssetResponse]
+    total: int
+
+
 # ---------------------------------------------------------------------------
 # Faces & Search
 # ---------------------------------------------------------------------------

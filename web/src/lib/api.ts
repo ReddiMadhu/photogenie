@@ -2,6 +2,20 @@
  * API Client — typed fetch wrapper for the PhotoGenic API.
  */
 
+/** Map technical errors to human-friendly messages. */
+function humanizeError(status: number, detail: string): string {
+  if (status === 502 || status === 503) return 'We\'re having trouble connecting to our servers. Please try again in a moment.';
+  if (status === 504) return 'The request took too long. Please try again.';
+  if (status === 413) return 'This file is too large. Please use an image under 20MB.';
+  if (status === 404) return 'We couldn\'t find what you\'re looking for. It may have been moved or deleted.';
+  if (status === 429) return 'You\'re making requests too quickly. Please wait a moment and try again.';
+  if (status === 401 || status === 403) return 'You don\'t have access to this resource. Please check your permissions.';
+  if (detail?.toLowerCase().includes('no face')) return 'We couldn\'t detect a face in this photo. Try using a clearer image.';
+  if (detail?.toLowerCase().includes('quota')) return 'This project has reached its photo limit. Remove some photos or contact support.';
+  if (detail?.toLowerCase().includes('parse') || detail?.toLowerCase().includes('json')) return 'The data format doesn\'t look right. Please check your input and try again.';
+  return detail || 'Something went wrong. Please try again.';
+}
+
 const API_BASE = `${window.location.protocol}//${window.location.hostname}:8000/v1`;
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -15,7 +29,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || `API Error ${res.status}`);
+    throw new Error(humanizeError(res.status, err.detail));
   }
 
   return res.json();
@@ -43,6 +57,19 @@ export interface Person {
   consent_state: string;
   is_hidden: boolean;
   created_at: string;
+}
+
+export interface Asset {
+  id: string;
+  group_id: string;
+  filename?: string;
+  mime_type?: string;
+  width?: number;
+  height?: number;
+  taken_at?: string;
+  status: string;
+  face_count: number;
+  thumbnail_url?: string;
 }
 
 export interface SearchResult {
@@ -105,13 +132,16 @@ export const api = {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || `Upload Error ${res.status}`);
+      throw new Error(humanizeError(res.status, err.detail));
     }
     return res.json();
   },
 
   deleteAsset: (groupId: string, assetId: string) =>
     request(`/groups/${groupId}/assets/${assetId}`, { method: 'DELETE' }),
+
+  listAssets: (groupId: string, limit?: number, offset?: number) =>
+    request<{ assets: Asset[]; total: number }>(`/groups/${groupId}/assets?limit=${limit || 50}&offset=${offset || 0}`),
 
   // Search
   searchFace: async (groupId: string, file: File): Promise<SearchResponse> => {
@@ -121,7 +151,10 @@ export const api = {
       method: 'POST',
       body: form,
     });
-    if (!res.ok) throw new Error(`Search Error ${res.status}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: '' }));
+      throw new Error(humanizeError(res.status, err.detail));
+    }
     return res.json();
   },
 

@@ -189,3 +189,19 @@
 ::-webkit-scrollbar-thumb:hover {
     background: oklch(0.4 0.02 270);
 }
+
+/* Confidence bar fill animation */
+@keyframes confidence-fill {
+    from { width: 0%; }
+}
+
+.confidence-fill {
+    animation: confidence-fill 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Best match card glow */
+.best-match-card {
+    box-shadow:
+        0 0 20px oklch(0.65 0.2 270 / 8%),
+        0 4px 24px oklch(0 0 0 / 20%);
+}

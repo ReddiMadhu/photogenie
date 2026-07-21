@@ -4,30 +4,34 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { api } from '@/lib/api'
-import type { Group, Person, ConnectorResponse } from '@/lib/api'
+import { api, getAssetImageUrl } from '@/lib/api'
+import type { Group, Person, ConnectorResponse, Asset } from '@/lib/api'
 import {
   Upload,
   Image,
   Users,
-  Grid3X3,
   BarChart3,
   Loader2,
   Link,
+  FolderOpen,
+  ArrowRight,
 } from 'lucide-react'
 
 interface Props {
   groupId: string | null
+  onSelectGroup?: (id: string) => void
 }
 
-export function GroupPage({ groupId }: Props) {
+export function GroupPage({ groupId, onSelectGroup }: Props) {
   const [group, setGroup] = useState<Group | null>(null)
   const [persons, setPersons] = useState<Person[]>([])
   const [connectors, setConnectors] = useState<ConnectorResponse[]>([])
+  const [assets, setAssets] = useState<Asset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [uploads, setUploads] = useState<{ name: string; progress: number; error?: string }[]>([])
+  const [uploadSummary, setUploadSummary] = useState<{ total: number; success: number; failed: number } | null>(null)
   const [folderId, setFolderId] = useState('')
   const [credentialsText, setCredentialsText] = useState('')
   const [enabling, setEnabling] = useState(false)
@@ -41,11 +45,13 @@ export function GroupPage({ groupId }: Props) {
       api.getGroup(groupId),
       api.listPersons(groupId).catch(() => ({ persons: [], total: 0 })),
       api.listConnectors(groupId).catch(() => []),
+      api.listAssets(groupId).catch(() => ({ assets: [], total: 0 })),
     ])
-      .then(([grp, ppl, conns]) => {
+      .then(([grp, ppl, conns, asts]) => {
         setGroup(grp)
         setPersons(ppl.persons)
         setConnectors(conns)
+        setAssets(asts.assets)
         setError(null)
       })
       .catch(err => setError(err.message))
@@ -66,8 +72,12 @@ export function GroupPage({ groupId }: Props) {
 
   const uploadFiles = async (files: File[]) => {
     if (!groupId) return
+    setUploadSummary(null)
     const newUploads = files.map(f => ({ name: f.name, progress: 0 }))
     setUploads(prev => [...prev, ...newUploads])
+
+    let success = 0
+    let failed = 0
 
     for (let i = 0; i < files.length; i++) {
       try {
@@ -75,19 +85,28 @@ export function GroupPage({ groupId }: Props) {
           idx === prev.length - files.length + i ? { ...u, progress: 50 } : u
         ))
         await api.uploadAsset(groupId, files[i])
+        success++
         setUploads(prev => prev.map((u, idx) =>
           idx === prev.length - files.length + i ? { ...u, progress: 100 } : u
         ))
       } catch (err: any) {
+        failed++
         setUploads(prev => prev.map((u, idx) =>
           idx === prev.length - files.length + i ? { ...u, progress: 100, error: err.message } : u
         ))
       }
     }
-    // Refresh group data after uploads
+
+    setUploadSummary({ total: files.length, success, failed })
+
+    // Refresh group data, assets and persons after uploads
     try {
       const grp = await api.getGroup(groupId)
       setGroup(grp)
+      const asts = await api.listAssets(groupId)
+      setAssets(asts.assets)
+      const ppl = await api.listPersons(groupId)
+      setPersons(ppl.persons)
     } catch {}
   }
 
@@ -112,15 +131,7 @@ export function GroupPage({ groupId }: Props) {
   }
 
   if (!groupId) {
-    return (
-      <div className="max-w-7xl mx-auto flex items-center justify-center h-[60vh]">
-        <div className="text-center space-y-3">
-          <Grid3X3 className="h-12 w-12 text-muted-foreground/40 mx-auto" />
-          <h3 className="text-xl font-semibold">No Group Selected</h3>
-          <p className="text-muted-foreground">Select a group from the dashboard to view details.</p>
-        </div>
-      </div>
-    )
+    return <ProjectSelector onSelect={onSelectGroup} />
   }
 
   if (loading) {
@@ -171,7 +182,7 @@ export function GroupPage({ groupId }: Props) {
           </div>
           <Progress value={pct} className="h-2" />
           <p className="text-xs text-muted-foreground">
-            {(group.max_active_images - group.active_image_count).toLocaleString()} slots remaining
+            {(group.max_active_images - group.active_image_count).toLocaleString()} photos remaining
             {pct > 90 && <Badge variant="destructive" className="ml-2 text-[10px]">Near Limit</Badge>}
           </p>
         </CardContent>
@@ -186,10 +197,10 @@ export function GroupPage({ groupId }: Props) {
             <Users className="h-4 w-4 mr-2" /> People ({persons.length})
           </TabsTrigger>
           <TabsTrigger value="assets" className="cursor-pointer">
-            <Image className="h-4 w-4 mr-2" /> Assets
+            <Image className="h-4 w-4 mr-2" /> Photos
           </TabsTrigger>
           <TabsTrigger value="connectors" className="cursor-pointer">
-            <Link className="h-4 w-4 mr-2" /> Connectors ({connectors.length})
+            <Link className="h-4 w-4 mr-2" /> Sources ({connectors.length})
           </TabsTrigger>
         </TabsList>
 
@@ -216,13 +227,38 @@ export function GroupPage({ groupId }: Props) {
               or click to browse · JPEG, PNG, HEIC, WebP
             </p>
             <p className="text-xs text-muted-foreground/60 mt-1">
-              Upload triggers SAHI detection, ArcFace embedding, quality scoring, and person assignment.
+              We'll automatically find every face and organize people.
             </p>
           </div>
 
-          {uploads.length > 0 && (
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium">Processing Queue</h4>
+          {uploadSummary && (
+            <Card className="border-emerald-500/20 bg-emerald-500/5 mt-4">
+              <CardContent className="pt-4 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-semibold text-emerald-400">✅ All done!</h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Uploaded {uploadSummary.success} of {uploadSummary.total} {uploadSummary.total === 1 ? 'photo' : 'photos'} successfully
+                    {uploadSummary.failed > 0 && ` (${uploadSummary.failed} failed)`}. Organizing faces in the background…
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setUploadSummary(null)
+                    setUploads([])
+                  }}
+                  className="text-xs hover:bg-emerald-500/10 cursor-pointer"
+                >
+                  Dismiss
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {uploads.length > 0 && !uploadSummary && (
+            <div className="space-y-3 mt-4">
+              <h4 className="text-sm font-medium">Upload Progress</h4>
               {uploads.map((u, i) => (
                 <div key={i} className="flex items-center gap-4 p-3 rounded-lg bg-card border border-border">
                   <Image className="h-5 w-5 text-muted-foreground" />
@@ -248,7 +284,7 @@ export function GroupPage({ groupId }: Props) {
             <div className="text-center py-12 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
               <p className="text-lg font-medium">No people identified yet</p>
-              <p className="text-sm mt-1">Upload images to start detecting and clustering faces.</p>
+              <p className="text-sm mt-1">Upload photos to start finding and organizing faces.</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -271,12 +307,45 @@ export function GroupPage({ groupId }: Props) {
         </TabsContent>
 
         {/* Assets Tab */}
-        <TabsContent value="assets">
-          <div className="text-center py-12 text-muted-foreground">
-            <Image className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
-            <p className="text-lg font-medium">{group.active_image_count} images in this group</p>
-            <p className="text-sm mt-1">Asset thumbnails will appear here after processing.</p>
-          </div>
+        <TabsContent value="assets" className="space-y-4">
+          {assets.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Image className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
+              <p className="text-lg font-medium">No photos uploaded yet</p>
+              <p className="text-sm mt-1">Drag and drop photos to get started.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {assets.map((asset) => (
+                <div
+                  key={asset.id}
+                  className="rounded-xl border border-border bg-card overflow-hidden hover:border-primary/30 transition-all duration-300 relative group"
+                >
+                  <div className="aspect-square bg-muted relative overflow-hidden flex items-center justify-center">
+                    {asset.status === 'ready' && asset.id ? (
+                      <img
+                        src={getAssetImageUrl(asset.id)}
+                        alt={asset.filename || 'Asset'}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="text-center p-3">
+                        <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary/40 mb-1" />
+                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{asset.status}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-3 bg-muted/20 border-t border-border/50 text-xs">
+                    <p className="font-medium truncate" title={asset.filename}>{asset.filename || 'Unnamed Image'}</p>
+                    <p className="text-muted-foreground text-[10px] mt-0.5">
+                      {asset.face_count} face{asset.face_count === 1 ? '' : 's'} detected
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         {/* Connectors Tab */}
@@ -286,7 +355,7 @@ export function GroupPage({ groupId }: Props) {
             <Card className="glass-card">
               <CardContent className="pt-6 space-y-4">
                 <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <Link className="h-5 w-5 text-primary" /> Setup Google Drive Connector
+                  <Link className="h-5 w-5 text-primary" /> Connect Google Drive
                 </h3>
                 <p className="text-sm text-muted-foreground">
                   Sync photos automatically from a Google Drive folder.
@@ -325,7 +394,7 @@ export function GroupPage({ groupId }: Props) {
                   onClick={handleEnableGDrive}
                   disabled={enabling || !folderId.trim() || !credentialsText.trim()}
                 >
-                  {enabling ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Connecting…</> : 'Enable Connector'}
+                  {enabling ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Connecting…</> : 'Connect'}
                 </Button>
               </CardContent>
             </Card>
@@ -333,12 +402,12 @@ export function GroupPage({ groupId }: Props) {
             {/* Status / Existing Connectors */}
             <Card className="glass-card">
               <CardContent className="pt-6 space-y-4">
-                <h3 className="text-lg font-semibold">Active Connectors</h3>
+                <h3 className="text-lg font-semibold">Active Sources</h3>
                 {connectors.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <Link className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
-                    <p className="text-sm font-medium">No connectors configured</p>
-                    <p className="text-xs mt-1">Configure Google Drive to start syncing files in the background.</p>
+                    <p className="text-sm font-medium">No sources configured</p>
+                    <p className="text-xs mt-1">Connect Google Drive to sync files in the background.</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -365,6 +434,64 @@ export function GroupPage({ groupId }: Props) {
           </div>
         </TabsContent>
       </Tabs>
+    </div>
+  )
+}
+
+/** Inline project selector shown when no project is active — replaces dead-end. */
+function ProjectSelector({ onSelect }: { onSelect?: (id: string) => void }) {
+  const [groups, setGroups] = useState<Group[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api.listGroups()
+      .then(data => setGroups(data.groups))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">Projects</h2>
+        <p className="text-muted-foreground mt-1">Choose a project to manage photos and people</p>
+      </div>
+      {loading ? (
+        <div className="flex items-center justify-center h-32 text-muted-foreground">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading projects…
+        </div>
+      ) : groups.length === 0 ? (
+        <Card className="glass-card">
+          <CardContent className="pt-6 text-center text-muted-foreground">
+            <FolderOpen className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
+            <p className="text-lg font-medium">No projects yet</p>
+            <p className="text-sm mt-1">Create your first project from the Home page to get started.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 stagger">
+          {groups.map(g => (
+            <Card
+              key={g.id}
+              className="glass-card cursor-pointer hover:border-primary/30 transition-all duration-300 hover:-translate-y-1 group"
+              onClick={() => onSelect?.(g.id)}
+            >
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="font-semibold text-lg group-hover:text-primary transition-colors">{g.name}</h4>
+                    <p className="text-sm text-muted-foreground mt-1">{g.active_image_count.toLocaleString()} photos</p>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">{g.status}</Badge>
+                </div>
+                <div className="mt-4 flex items-center text-xs text-primary/70 group-hover:text-primary transition-colors">
+                  Open <ArrowRight className="h-3 w-3 ml-1" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

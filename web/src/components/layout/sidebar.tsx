@@ -1,28 +1,30 @@
 import type { Page } from '@/App'
+import type { Group } from '@/lib/api'
 import { Separator } from '@/components/ui/separator'
 import {
-  LayoutDashboard,
+  Home,
   FolderOpen,
   Search,
   Users,
-  ShieldCheck,
+  Settings,
   Sparkles,
 } from 'lucide-react'
 
 interface SidebarProps {
   activePage: Page
   onNavigate: (page: Page) => void
+  activeGroup?: Group | null
 }
 
 const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" /> },
-  { id: 'group', label: 'Groups', icon: <FolderOpen className="h-4 w-4" /> },
+  { id: 'dashboard', label: 'Home', icon: <Home className="h-4 w-4" /> },
+  { id: 'group', label: 'Projects', icon: <FolderOpen className="h-4 w-4" /> },
   { id: 'search', label: 'Search', icon: <Search className="h-4 w-4" /> },
   { id: 'people', label: 'People', icon: <Users className="h-4 w-4" /> },
-  { id: 'admin', label: 'Admin', icon: <ShieldCheck className="h-4 w-4" /> },
+  { id: 'admin', label: 'Settings', icon: <Settings className="h-4 w-4" /> },
 ]
 
-export function Sidebar({ activePage, onNavigate }: SidebarProps) {
+export function Sidebar({ activePage, onNavigate, activeGroup }: SidebarProps) {
   return (
     <aside className="w-64 flex-shrink-0 border-r border-border bg-sidebar flex flex-col">
       {/* Logo */}
@@ -57,12 +59,32 @@ export function Sidebar({ activePage, onNavigate }: SidebarProps) {
         ))}
       </nav>
 
+      {/* Active project context */}
+      {activeGroup && (
+        <>
+          <Separator />
+          <div className="px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-1.5">
+              Active Project
+            </p>
+            <p className="text-sm font-medium truncate" title={activeGroup.name}>
+              {activeGroup.name}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {activeGroup.active_image_count.toLocaleString()} photos
+            </p>
+          </div>
+        </>
+      )}
+
       <Separator />
 
       {/* Footer */}
-      <div className="px-5 py-4">
-        <p className="text-xs text-muted-foreground">Enterprise Face Search</p>
-        <p className="text-xs text-muted-foreground/60">v0.1.0 — Phase 1</p>
+      <div className="px-5 py-4 flex items-center justify-between text-xs text-muted-foreground/60">
+        <span>PhotoGenic</span>
+        <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-0.5 rounded border border-border bg-muted px-1.5 font-mono text-[9px] font-medium text-muted-foreground/80">
+          <span>⌘</span>K
+        </kbd>
       </div>
     </aside>
   )

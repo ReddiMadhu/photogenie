@@ -12,7 +12,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
-from packages.schemas.api_models import AssetUploadResponse
+from packages.schemas.api_models import AssetUploadResponse, AssetListResponse, AssetResponse
 from services.api.auth import UserInfo, get_current_user, require_group_access
 from services.api.database import get_pool
 
@@ -195,3 +195,55 @@ async def delete_asset(
         )
 
     return {"status": "deleted", "asset_id": str(asset_id), "vectors_erased": len(embedding_ids)}
+
+
+@router.get("", response_model=AssetListResponse)
+async def list_assets(
+    group_id: uuid.UUID,
+    limit: int = 50,
+    offset: int = 0,
+    user: UserInfo = Depends(get_current_user),
+):
+    """
+    List assets in a search group.
+    """
+    await require_group_access(user, group_id, required_role="viewer")
+
+    pool = await get_pool()
+
+    async with pool.acquire() as conn:
+        # Get total count
+        total = await conn.fetchval(
+            "SELECT COUNT(*) FROM assets WHERE group_id = $1 AND status != 'deleted'",
+            group_id,
+        )
+
+        # Get assets list
+        rows = await conn.fetch(
+            "SELECT a.id, a.group_id, a.filename, a.mime_type, a.width, a.height, a.taken_at, a.status, "
+            "(SELECT COUNT(*) FROM faces f WHERE f.asset_id = a.id) as face_count "
+            "FROM assets a "
+            "WHERE a.group_id = $1 AND a.status != 'deleted' "
+            "ORDER BY a.created_at DESC "
+            "LIMIT $2 OFFSET $3",
+            group_id, limit, offset,
+        )
+
+    assets = []
+    for r in rows:
+        assets.append(
+            AssetResponse(
+                id=r["id"],
+                group_id=r["group_id"],
+                filename=r["filename"],
+                mime_type=r["mime_type"],
+                width=r["width"],
+                height=r["height"],
+                taken_at=r["taken_at"],
+                status=r["status"],
+                face_count=r["face_count"],
+                thumbnail_url=f"/v1/assets/{r['id']}/image" if r["status"] == "ready" else None,
+            )
+        )
+
+    return AssetListResponse(assets=assets, total=total)
