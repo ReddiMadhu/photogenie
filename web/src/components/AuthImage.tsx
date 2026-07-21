@@ -1,7 +1,7 @@
 import { useEffect, useState, type ImgHTMLAttributes, type ReactNode } from 'react'
 import { fetchAuthenticatedMedia } from '@/lib/api'
 
-interface Props extends ImgHTMLAttributes<HTMLImageElement> {
+interface Props extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   src?: string | null
   fallback?: ReactNode
 }

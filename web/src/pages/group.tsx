@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { api, getAssetImageUrl, resolveMediaUrl } from '@/lib/api'
+import { api, getAssetImageUrl } from '@/lib/api'
 import type { Group, Person, ConnectorResponse, Asset } from '@/lib/api'
 import { AuthImage } from '@/components/AuthImage'
 import {
