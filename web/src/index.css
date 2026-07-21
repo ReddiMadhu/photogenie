@@ -48,40 +48,40 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Dark-first premium indigo palette */
+/* Premium dark-first enterprise Royal Blue palette */
 :root {
-    --background: oklch(0.11 0.01 270);
-    --foreground: oklch(0.95 0.01 270);
-    --card: oklch(0.16 0.015 270);
-    --card-foreground: oklch(0.95 0.01 270);
-    --popover: oklch(0.16 0.015 270);
-    --popover-foreground: oklch(0.95 0.01 270);
-    --primary: oklch(0.65 0.2 270);
-    --primary-foreground: oklch(0.98 0 0);
-    --secondary: oklch(0.22 0.02 270);
-    --secondary-foreground: oklch(0.9 0.01 270);
-    --muted: oklch(0.2 0.015 270);
-    --muted-foreground: oklch(0.6 0.02 270);
-    --accent: oklch(0.25 0.04 270);
-    --accent-foreground: oklch(0.9 0.01 270);
-    --destructive: oklch(0.65 0.2 25);
-    --border: oklch(0.28 0.02 270);
-    --input: oklch(0.25 0.02 270);
-    --ring: oklch(0.65 0.2 270);
-    --chart-1: oklch(0.65 0.2 270);
-    --chart-2: oklch(0.6 0.18 290);
-    --chart-3: oklch(0.7 0.15 170);
-    --chart-4: oklch(0.7 0.15 50);
-    --chart-5: oklch(0.6 0.15 330);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.13 0.012 270);
-    --sidebar-foreground: oklch(0.85 0.01 270);
-    --sidebar-primary: oklch(0.65 0.2 270);
-    --sidebar-primary-foreground: oklch(0.98 0 0);
-    --sidebar-accent: oklch(0.22 0.03 270);
-    --sidebar-accent-foreground: oklch(0.9 0.01 270);
-    --sidebar-border: oklch(0.25 0.02 270);
-    --sidebar-ring: oklch(0.65 0.2 270);
+    --background: #0B0F19;
+    --foreground: #F8FAFC;
+    --card: #111827;
+    --card-foreground: #F8FAFC;
+    --popover: #111827;
+    --popover-foreground: #F8FAFC;
+    --primary: #2563EB;
+    --primary-foreground: #F8FAFC;
+    --secondary: #111827;
+    --secondary-foreground: #94A3B8;
+    --muted: #111827;
+    --muted-foreground: #64748B;
+    --accent: #111827;
+    --accent-foreground: #F8FAFC;
+    --destructive: #EF4444;
+    --border: rgba(255, 255, 255, 0.06);
+    --input: #111827;
+    --ring: #2563EB;
+    --chart-1: #2563EB;
+    --chart-2: #3B82F6;
+    --chart-3: #22C55E;
+    --chart-4: #F59E0B;
+    --chart-5: #EF4444;
+    --radius: 0.5rem;
+    --sidebar: #111827;
+    --sidebar-foreground: #94A3B8;
+    --sidebar-primary: #2563EB;
+    --sidebar-primary-foreground: #F8FAFC;
+    --sidebar-accent: #1F2937;
+    --sidebar-accent-foreground: #F8FAFC;
+    --sidebar-border: rgba(255, 255, 255, 0.06);
+    --sidebar-ring: #2563EB;
 }
 
 @layer base {
@@ -103,13 +103,13 @@
 /* Glassmorphism card */
 .glass-card {
     backdrop-filter: blur(20px);
-    background: oklch(0.16 0.015 270 / 60%);
-    border: 1px solid oklch(1 0 0 / 6%);
+    background: rgba(17, 24, 39, 0.6);
+    border: 1px solid var(--border);
 }
 
 /* Gradient text */
 .gradient-text {
-    background: linear-gradient(135deg, oklch(0.65 0.2 270), oklch(0.6 0.18 290), oklch(0.7 0.15 300));
+    background: linear-gradient(135deg, var(--primary), #3B82F6, #60A5FA);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -117,19 +117,19 @@
 
 /* Accent glow */
 .glow-accent {
-    box-shadow: 0 0 30px oklch(0.65 0.2 270 / 20%);
+    box-shadow: 0 0 30px rgba(37, 99, 235, 0.2);
 }
 
 /* Upload drop zone */
 .drop-zone {
-    border: 2px dashed oklch(0.35 0.02 270);
+    border: 2px dashed rgba(255, 255, 255, 0.1);
     transition: all 0.25s ease;
 }
 .drop-zone:hover,
 .drop-zone.active {
-    border-color: oklch(0.65 0.2 270);
-    background: oklch(0.65 0.2 270 / 5%);
-    box-shadow: 0 0 40px oklch(0.65 0.2 270 / 10%);
+    border-color: var(--primary);
+    background: rgba(37, 99, 235, 0.05);
+    box-shadow: 0 0 40px rgba(37, 99, 235, 0.1);
 }
 
 /* Quota bar */
@@ -167,8 +167,8 @@
 
 /* Pulse glow for active elements */
 @keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 20px oklch(0.65 0.2 270 / 15%); }
-    50%      { box-shadow: 0 0 40px oklch(0.65 0.2 270 / 30%); }
+    0%, 100% { box-shadow: 0 0 20px rgba(37, 99, 235, 0.15); }
+    50%      { box-shadow: 0 0 40px rgba(37, 99, 235, 0.3); }
 }
 
 .animate-pulse-glow {
@@ -183,11 +183,11 @@
     background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-    background: oklch(0.3 0.02 270);
+    background: rgba(255, 255, 255, 0.15);
     border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.4 0.02 270);
+    background: rgba(255, 255, 255, 0.25);
 }
 
 /* Confidence bar fill animation */
@@ -202,6 +202,6 @@
 /* Best match card glow */
 .best-match-card {
     box-shadow:
-        0 0 20px oklch(0.65 0.2 270 / 8%),
-        0 4px 24px oklch(0 0 0 / 20%);
+        0 0 20px rgba(37, 99, 235, 0.08),
+        0 4px 24px rgba(0, 0, 0, 0.4);
 }

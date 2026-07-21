@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import './index.css'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { TopBar, WorkspaceTabs, type WorkspaceView } from '@/components/layout/TopBar'
-import { ProjectDrawer, SystemDrawer } from '@/components/layout/Drawers'
+import { ControlCenter } from '@/components/layout/ControlCenter'
 import { SearchPage } from '@/pages/search'
 import { UploadsPage } from '@/pages/uploads'
 import { PeoplePage } from '@/pages/people'
@@ -26,8 +26,7 @@ function App() {
   )
   const [groups, setGroups] = useState<Group[]>([])
   const [authReady, setAuthReady] = useState(false)
-  const [projectOpen, setProjectOpen] = useState(false)
-  const [systemOpen, setSystemOpen] = useState(false)
+  const [controlCenterOpen, setControlCenterOpen] = useState(false)
   const [firstName, setFirstName] = useState('')
   const [creating, setCreating] = useState(false)
 
@@ -74,8 +73,11 @@ function App() {
         setView('search')
         setTimeout(() => window.dispatchEvent(new CustomEvent('focus-search-upload')), 80)
       }
-      if (e.key.toLowerCase() === 'u' && !e.metaKey && !e.ctrlKey && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
-        // skip if typing
+      if (e.altKey) {
+        if (e.key === '1') { e.preventDefault(); setView('search') }
+        if (e.key === '2') { e.preventDefault(); setView('people') }
+        if (e.key === '3') { e.preventDefault(); setView('uploads') }
+        if (e.key === '4') { e.preventDefault(); setView('activity') }
       }
     }
     window.addEventListener('keydown', onKey)
@@ -123,8 +125,7 @@ function App() {
             setView('search')
             setTimeout(() => window.dispatchEvent(new CustomEvent('focus-search-upload')), 80)
           }}
-          onOpenProject={() => setProjectOpen(true)}
-          onOpenSystem={() => setSystemOpen(true)}
+          onOpenControlCenter={() => setControlCenterOpen(true)}
         />
 
         {activeGroup && (
@@ -203,13 +204,12 @@ function App() {
           </div>
         </main>
 
-        <ProjectDrawer
-          open={projectOpen}
-          onOpenChange={setProjectOpen}
+        <ControlCenter
+          open={controlCenterOpen}
+          onOpenChange={setControlCenterOpen}
           group={activeGroup}
           onGroupUpdated={onGroupUpdated}
         />
-        <SystemDrawer open={systemOpen} onOpenChange={setSystemOpen} />
       </div>
     </TooltipProvider>
   )
