@@ -7,7 +7,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -86,7 +85,7 @@ export function TopBar({
             <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-72">
-            <DropdownMenuLabel>Projects</DropdownMenuLabel>
+            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Projects</div>
             {groups.length === 0 && (
               <p className="px-2 py-3 text-sm text-muted-foreground">No projects yet</p>
             )}
@@ -147,7 +146,7 @@ export function TopBar({
               </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>Account</DropdownMenuLabel>
+              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Account</div>
               <DropdownMenuItem className="cursor-pointer gap-2" onClick={onOpenSystem}>
                 <Settings className="h-4 w-4" /> System
               </DropdownMenuItem>
