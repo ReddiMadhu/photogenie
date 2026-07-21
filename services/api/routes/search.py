@@ -83,6 +83,7 @@ async def search_face(
             raise HTTPException(status_code=502, detail="Retrieval service error")
 
         search_result = search_resp.json()
+        results = search_result.get("results", [])
 
     # Persist query face + embedding so feedback/calibration can resolve scores
     query_face_id: uuid.UUID | None = None
