@@ -693,3 +693,12 @@ Here's everything together for one SAS program:
 
 > [!TIP]
 > **The one thing to remember:** This system doesn't trust the AI's translation. It **independently verifies** by running both programs and comparing every row of output. That's the difference between "AI-generated code" and "verified migration."
+From your Claude, let's get slides for this:
+
+1\. Technical process of how SAS to PySpark migration is working — covering what goes to the LLM and how, what comes out, where iterations are running, etc.; and then we will highlight where humans will be involved on the UI.
+
+2\. Technical process of how rationalization recommendations are generated (this you can run on your personal system since you developed it there) — covering what goes to the LLM and how, and what comes out.
+
+3\. What value the SAS to PySpark migration and reconciliation tool is generating against the manual process or even GitHub Copilot — value to be quantified wherever possible (I am hoping speed and accuracy, etc., will come out).
+
+4\. What value the dashboard rationalization recommendation is generating against the manual process — value to be quantified wherever possible (I am hoping speed and accuracy, etc., will come out).
